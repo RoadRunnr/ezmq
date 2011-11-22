@@ -1,0 +1,7 @@
+# emacs
+*~
+# vim
+.*.sw[a-z]
+
+*.beam
+ebin/*.app

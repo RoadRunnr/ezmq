@@ -1,0 +1,14 @@
+{application, zmq,
+ [
+  {description, "native Erlang 0MQ implementation"},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  sasl,
+                  gen_listener_tcp
+                 ]},
+  {mod, { zmq_app, []}},
+  {env, []}
+ ]}.
