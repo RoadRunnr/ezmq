@@ -9,7 +9,7 @@
 
 %% API
 -export([start_link/0]).
--export([start_connection/0, accept/3, connect/2]).
+-export([start_connection/0, accept/3, connect/2, close/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -75,6 +75,9 @@ connect(Server, Socket) ->
 send(Server, Msg) ->
 	gen_fsm:send_event(Server, {send, Msg}).
 
+close(Server) ->
+	gen_fsm:sync_send_all_state_event(Server, close).
+
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
@@ -113,13 +116,13 @@ init([]) ->
 %%--------------------------------------------------------------------
 setup({accept, MqSocket, Socket}, State) ->
 	?DEBUG("got setup~n"),
-	zmq:deliver_accept(MqSocket),
 	NewState = State#state{mqsocket = MqSocket, socket = Socket},
 	?DEBUG("NewState: ~p~n", [NewState]),
 	send_frames([<<>>], {next_state, open, NewState, ?CONNECT_TIMEOUT}).
 
 connecting(timeout, State) ->
 	?DEBUG("timeout in connecting~n"),
+	gen_fsm:reply(State#state.pending_connect, {error, timeout}),
 	{stop, normal, State};
 
 connecting({in, Frames}, State) when length(Frames) == 1 ->
@@ -130,14 +133,17 @@ connecting({in, Frames}, State) when length(Frames) == 1 ->
 
 connecting({in, Frames}, State) ->
 	?DEBUG("Invalid frames in connecting: ~p~n", [Frames]),
+	gen_fsm:reply(State#state.pending_connect, {error, data}),
 	{stop, normal, State}.
 
 open(timeout, State) ->
 	?DEBUG("timeout in open~n"),
 	{stop, normal, State};
 
-open({in, Frames}, State) when length(Frames) == 1 ->
+open({in, Frames}, #state{mqsocket = MqSocket} = State)
+  when length(Frames) == 1 ->
 	?DEBUG("Frames in open: ~p~n", [Frames]),
+	zmq:deliver_accept(MqSocket),
 	{next_state, connected, State, ?REQUEST_TIMEOUT};
 
 open({in, Frames}, State) ->
@@ -215,6 +221,11 @@ handle_event(_Event, StateName, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_sync_event(close, _From, _StateName, #state{mqsocket = MqSocket, socket = Socket} = State) ->
+	gen_tcp:close(Socket),
+	zmq:deliver_close(MqSocket),
+	{stop, normal, ok, State};
+
 handle_sync_event(_Event, _From, StateName, State) ->
 	Reply = ok,
 	{reply, Reply, StateName, State}.
@@ -232,6 +243,10 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({'EXIT', MqSocket, _Reason}, _StateName, #state{mqsocket = MqSocket, socket = Socket} = State) ->
+	gen_tcp:close(Socket),
+	{stop, normal, State};
+
 handle_info({tcp, Socket, Data}, StateName, #state{socket = Socket} = State) ->
 	?DEBUG("handle_info: ~p~n", [Data]),
 	State1 = State#state{pending = <<(State#state.pending)/binary, Data/binary>>},
@@ -257,11 +272,11 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 			setelement(3, ProcessStateNext, State1);
 
 		{true, Frame} ->
-			State2 = State1#state{frames = State1#state.frames ++ [Frame]},
+			State2 = State1#state{frames = [Frame|State1#state.frames]},
 			handle_data(StateName, State2, setelement(3, ProcessStateNext, State2));
 
 		{false, Frame} ->
-			Frames = State1#state.frames ++ [Frame],
+			Frames = lists:reverse([Frame|State1#state.frames]),
 			State2 = State1#state{frames = []},
 			?DEBUG("handle_data: finale decoded: ~p~n", [Frames]),
 			Reply = exec_sync(Frames, StateName, State2),

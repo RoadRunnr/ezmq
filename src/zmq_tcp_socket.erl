@@ -28,10 +28,10 @@
 
 %% @doc Start the server.
 start(Port, Opts) ->
-    gen_listener_tcp:start({local, ?MODULE}, ?MODULE, [self(), Port, Opts], [{debug,[trace]}]).
+    gen_listener_tcp:start(?MODULE, [self(), Port, Opts], [{debug,[trace]}]).
 
 start_link(Port, Opts) ->
-    gen_listener_tcp:start_link({local, ?MODULE}, ?MODULE, [self(), Port, Opts], [{debug,[trace]}]).
+    gen_listener_tcp:start_link(?MODULE, [self(), Port, Opts], [{debug,[trace]}]).
 
 init([MqSocket, Port, Opts]) ->
     {ok, {Port, Opts}, MqSocket}.

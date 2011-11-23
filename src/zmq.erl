@@ -8,10 +8,11 @@
 -include("zmq_internal.hrl").
 
 %% API scheduler
--export([start_link/1, start/1]).
--export([bind/3, connect/4, connect/5]).
+-export([start_link/1, start/1, socket_link/1, socket/1]).
+-export([bind/3, connect/4, connect/5, close/1]).
 -export([recv/1, recv/2]).
 -export([send/2]).
+-export([setopts/2]).
 
 %% Internal exports
 -export([deliver_recv/2, deliver_accept/1, deliver_close/1, lb/2]).
@@ -39,6 +40,11 @@ start_link(Opts) when is_list(Opts) ->
 start(Opts) when is_list(Opts) ->
 	gen_server:start(?MODULE, {self(), Opts}, []).
 
+socket_link(Opts) when is_list(Opts) ->
+	start_link(Opts).
+socket(Opts) when is_list(Opts) ->
+	start(Opts).
+
 bind(Socket, Port, Opts) ->
 	%%TODO: socket options
 	gen_server:call(Socket, {bind, Port, Opts}).
@@ -56,6 +62,9 @@ connect(Socket, Address, Port, Opts, Timeout) ->
 			Reply
 	end.
 
+close(Socket) ->
+	gen_server:call(Socket, close).
+
 send(Socket, Msg) when is_pid(Socket), is_list(Msg) ->
 	gen_server:call(Socket, {send, Msg}, infinity).
 
@@ -64,6 +73,9 @@ recv(Socket) ->
 
 recv(Socket, Timeout) ->
 	gen_server:call(Socket, {recv, Timeout}, infinity).
+
+setopts(Socket, Opts) ->
+	gen_server:call(Socket, {setopts, Opts}).
 
 deliver_recv(Socket, Msg) ->
 	gen_server:call(Socket, {deliver_recv, self(), Msg}).
@@ -117,8 +129,9 @@ init({Owner, Opts}) ->
 
 init_socket(Owner, Type, Opts) ->
 	process_flag(trap_exit, true),
-	MqSState = #zmq_socket{owner = Owner, pending_q = orddict:new(), listen_trans = [], transports = []},
-	zmq_socket_fsm:init(Type, Opts, MqSState).
+	MqSState0 = #zmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(), listen_trans = [], transports = []},
+	MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
+	zmq_socket_fsm:init(Type, Opts, MqSState1).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -135,12 +148,13 @@ init_socket(Owner, Type, Opts) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({bind, Port, Opts}, _From, State) ->
-	IP = case proplists:get_value(ip, Opts) of
-			 undefined -> [];
-			 I -> {ip, I}
+	TcpOpts0 = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+	TcpOpts1 = case proplists:get_value(ip, Opts) of
+			 undefined -> TcpOpts0;
+			 I -> [{ip, I}|TcpOpts0]
 		 end,
-	TcpOpts = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
-	case zmq_tcp_socket:start_link(Port, [IP|TcpOpts]) of
+	io:format("bind: ~p~n", [TcpOpts1]),
+	case zmq_tcp_socket:start_link(Port, TcpOpts1) of
 		{ok, Pid} ->
 			{reply, ok, State#zmq_socket{listen_trans = [Pid|State#zmq_socket.listen_trans]}};
 		Reply ->
@@ -153,6 +167,12 @@ handle_call({connected, TcpSocket, _Opts}, _From, State) ->
 	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
 	{reply, ok, State1};
 
+handle_call(close, _From, State) ->
+	{stop, normal, ok, State};
+
+handle_call({recv, _Timeout}, _From, #zmq_socket{mode = Mode} = State)
+  when Mode /= passive ->
+	{reply, {error, active}, State};
 handle_call({recv, _Timeout}, _From, #zmq_socket{pending_recv = PendingRecv} = State)
   when PendingRecv /= none ->
 	Reply = {error, already_recv},
@@ -171,12 +191,17 @@ handle_call({send, Msg}, _From, State) ->
 			{reply, ok, State2}
 	end;
 
+handle_call({setopts, Opts}, _From, State) ->
+	NewState = lists:foldl(fun do_setopts/2, State, proplists:unfold(Opts)),
+	{reply, ok, NewState};
+
 handle_call({deliver_accept, Transport}, _From, State) ->
 	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
 	io:format("DELIVER_ACCPET: ~p~n", [State1]),
 	{reply, ok, State1};
 
 handle_call({deliver_close, Transport}, _From, State = #zmq_socket{transports = Transports}) ->
+	unlink(Transport),
 	State0 = State#zmq_socket{transports = lists:delete(Transport, Transports)},
 	State1 = queue_close(Transport, State0),
 	State2 = zmq_socket_fsm:close(Transport, State1),
@@ -255,13 +280,13 @@ queue_run(State) ->
 	end.
 queue_run_2(#zmq_socket{mode = Mode} = State)
   when Mode == active; Mode == active_once ->
-	run_pending_q(State);
+	run_recv_q(State);
 queue_run_2(#zmq_socket{pending_recv = {_From, _Ref}} = State) ->
-	run_pending_q(State);
+	run_recv_q(State);
 queue_run_2(#zmq_socket{mode = passive} = State) ->
 	State.
 
-run_pending_q(State) ->
+run_recv_q(State) ->
 	case dequeue(State) of
 		{{Transport, Msg}, State0} ->
 			send_owner({Transport, Msg}, State0);
@@ -276,11 +301,18 @@ send_owner({Transport, Msg}, #zmq_socket{pending_recv = {From, Ref}} = State) ->
 		_ -> erlang:cancel_timer(Ref)
 	end,
 	State1 = State#zmq_socket{pending_recv = none},
-	gen_server:reply(From, Msg),
+	gen_server:reply(From, {ok, decap_msg(Msg)}),
 	zmq_socket_fsm:do({deliver, Transport}, State1);
-send_owner({Transport, Msg}, #zmq_socket{owner = Owner, mode = active} = State) ->
-	Owner ! {zmq, self(), Msg},
-	zmq_socket_fsm:do({deliver, Transport}, State).
+send_owner({Transport, Msg}, #zmq_socket{owner = Owner, mode = Mode} = State)
+  when Mode == active; Mode == active_once ->
+	Owner ! {zmq, self(), decap_msg(Msg)},
+	NewState = zmq_socket_fsm:do({deliver, Transport}, State),
+	next_mode(NewState).
+
+next_mode(#zmq_socket{mode = active} = State) ->
+	queue_run(State);
+next_mode(#zmq_socket{mode = active_once} = State) ->
+	State#zmq_socket{mode = passive}.
 
 handle_deliver_recv({Transport, Msg}, MqSState) ->
 	io:format("deliver_recv: ~w, ~w~n", [Transport, Msg]),
@@ -328,40 +360,47 @@ handle_recv_2(_Timeout, _From, _, State) ->
 	case dequeue(State) of
 		{{Transport, Msg}, State0} ->
 			State2 = zmq_socket_fsm:do({deliver, Transport}, State0),
-			{reply, Msg, State2};
+			{reply, {ok, decap_msg(Msg)}, State2};
 		_ ->
 			{reply, {error, internal}, State}
 	end.
 
+encap_msg(Msg) when is_list(Msg) ->
+	lists:map(fun(M) -> {normal, M} end, Msg).
+decap_msg(Msg) when is_list(Msg) ->
+	io:format("decap: ~p~n", [Msg]),
+	lists:reverse(lists:foldl(fun({normal, M}, Acc) -> [M|Acc]; (_, Acc) -> Acc end, [], Msg)).
+					   
 zmq_link_send(Transports, Msg)
   when is_list(Transports) ->
-	lists:foreach(fun(T) -> zmq_link:send(T, Msg) end, Transports);
+	Msg1 = encap_msg(Msg),
+	lists:foreach(fun(T) -> zmq_link:send(T, Msg1) end, Transports);
 zmq_link_send(Transport, Msg) ->
-	zmq_link:send(Transport, Msg).
+	zmq_link:send(Transport, encap_msg(Msg)).
 
 %%
 %% round robin queue
 %%
 
-queue_size(#zmq_socket{pending_q = Q}) ->
+queue_size(#zmq_socket{recv_q = Q}) ->
 	orddict:size(Q).
 
-queue({Transport, Msg}, MqSState = #zmq_socket{pending_q = Q}) ->
+queue({Transport, Msg}, MqSState = #zmq_socket{recv_q = Q}) ->
 	Q1 = orddict:update(Transport, fun(V) -> queue:in(Msg, V) end,
 						queue:from_list([Msg]), Q),
-	MqSState1 = MqSState#zmq_socket{pending_q = Q1},
+	MqSState1 = MqSState#zmq_socket{recv_q = Q1},
 	zmq_socket_fsm:do({queue, Transport}, MqSState1).
 
-queue_close(Transport, MqSState = #zmq_socket{pending_q = Q}) ->
+queue_close(Transport, MqSState = #zmq_socket{recv_q = Q}) ->
 	Q1 = orddict:erase(Transport, Q),
-	MqSState#zmq_socket{pending_q = Q1}.
+	MqSState#zmq_socket{recv_q = Q1}.
 	
-dequeue(MqSState = #zmq_socket{pending_q = Q, transports = Transports}) ->
+dequeue(MqSState = #zmq_socket{recv_q = Q, transports = Transports}) ->
 	io:format("TRANS: ~p, PENDING: ~p~n", [Transports, Q]),
 	case do_dequeue(Transports, Q) of
 		{{Transport, Msg}, Q1} ->
 			Transports1 = lists:delete(Transport, Transports) ++ [Transport],
-			MqSState0 = MqSState#zmq_socket{pending_q = Q1, transports = Transports1},
+			MqSState0 = MqSState#zmq_socket{recv_q = Q1, transports = Transports1},
 			MqSState1 = zmq_socket_fsm:do({dequeue, Transport}, MqSState0),
 			{{Transport, Msg}, MqSState1};
 		Reply ->
@@ -382,3 +421,13 @@ do_dequeue([Transport|Rest], Q) ->
 		_ ->
 			do_dequeue(Rest, Q)
 	end.
+
+do_setopts({active, once}, MqSState) ->
+	run_recv_q(MqSState#zmq_socket{mode = active_once});
+do_setopts({active, true}, MqSState) ->
+	run_recv_q(MqSState#zmq_socket{mode = active});
+do_setopts({active, false}, MqSState) ->
+	MqSState#zmq_socket{mode = passive};
+
+do_setopts(_, MqSState) ->
+	MqSState.

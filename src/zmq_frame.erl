@@ -48,5 +48,5 @@ encode(Frame, Flags, Rest, Acc) ->
 				 length(Rest) =/= 0 -> Flags bor ?FLAG_MORE;
 				 true -> Flags
 			 end,
-	encode(Rest, [<<Header/binary, Flags1:8, Frame/binary>>, Acc]).
+	encode(Rest, [<<Header/binary, Flags1:8, Frame/binary>>|Acc]).
 
