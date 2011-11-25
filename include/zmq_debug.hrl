@@ -1,4 +1,3 @@
--define(debug, 1).
 -ifdef(debug).
 
 -define(DEBUG(FORMAT, DATA),
