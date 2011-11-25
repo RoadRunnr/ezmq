@@ -5,7 +5,7 @@
 %% --------------------------------------------------------------------
 -include("zmq_internal.hrl").
 
--export([init/1, close/4, idle/4, pending/4, reply/4]).
+-export([init/1, close/4, idle/4, pending/4, send_queued/4, reply/4]).
 
 -record(state, {
 		  last_send = none  :: pid()|'none'
@@ -37,7 +37,7 @@ close(_StateName, _Transport, MqSState, State) ->
 	{next_state, idle, MqSState, State1}.
 
 idle(check, send, #zmq_socket{transports = []}, _State) ->
-	{error, no_socket};
+	{queue, block};
 idle(check, send, #zmq_socket{transports = [Head|_]}, _State) ->
 	{ok, Head};
 idle(check, _, _MqSState, _State) ->
@@ -48,7 +48,25 @@ idle(do, {deliver_send, Transport}, MqSState, State) ->
 	MqSState1 = zmq:lb(Transport, MqSState),
 	{next_state, pending, MqSState1, State1};
 
+idle(do, queue_send, MqSState, State) ->
+	{next_state, send_queued, MqSState, State};
 idle(do, _, _MqSState, _State) ->
+	{error, fsm}.
+
+send_queued(check, send, #zmq_socket{transports = []}, _State) ->
+	{queue, block};
+send_queued(check, dequeue_send, #zmq_socket{transports = [Head|_]}, _State) ->
+	{ok, Head};
+send_queued(check, dequeue_send, _MqSState, _State) ->
+	keep;
+send_queued(check, _, _MqSState, _State) ->
+	{error, fsm};
+
+send_queued(do, {deliver_send, Transport}, MqSState, State) ->
+	State1 = State#state{last_send = Transport},
+	MqSState1 = zmq:lb(Transport, MqSState),
+	{next_state, pending, MqSState1, State1};
+send_queued(do, _, _MqSState, _State) ->
 	{error, fsm}.
 
 pending(check, recv, _MqSState, _State) ->

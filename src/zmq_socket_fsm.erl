@@ -3,6 +3,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
+-include("zmq_debug.hrl").
 -include("zmq_internal.hrl").
 
 -export([init/3, check/2, do/2, close/2]).
@@ -25,7 +26,7 @@ init(Module, Opts, MqSState) ->
 check(Action, MqSState = #zmq_socket{fsm = Fsm}) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	R = Module:StateName(check, Action, MqSState, State),
-	io:format("zmq_socket_fsm state: ~w, check: ~w, Result: ~w~n", [StateName, Action, R]),
+	?DEBUG("zmq_socket_fsm state: ~w, check: ~w, Result: ~w~n", [StateName, Action, R]),
 	R.
 
 do(Action, MqSState = #zmq_socket{fsm = Fsm}) ->
@@ -35,7 +36,7 @@ do(Action, MqSState = #zmq_socket{fsm = Fsm}) ->
 			error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Action, Reason, MqSState, State]),
 			error(Reason);
 		{next_state, NextStateName, NextMqSState, NextState} ->
-			io:format("zmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w~n", [StateName, Action, NextStateName]),
+			?DEBUG("zmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w~n", [StateName, Action, NextStateName]),
 			NewFsm = Fsm#fsm_state{state_name = NextStateName, state = NextState},
 			NextMqSState#zmq_socket{fsm = NewFsm}
 	end.
@@ -47,7 +48,7 @@ close(Transport, MqSState = #zmq_socket{fsm = Fsm}) ->
 			error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Transport, Reason, MqSState, State]),
 			error(Reason);
 		{next_state, NextStateName, NextMqSState, NextState} ->
-			io:format("zmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w~n", [StateName, Transport, NextStateName]),
+			?DEBUG("zmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w~n", [StateName, Transport, NextStateName]),
 			NewFsm = Fsm#fsm_state{state_name = NextStateName, state = NextState},
 			NextMqSState#zmq_socket{fsm = NewFsm}
 	end.

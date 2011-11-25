@@ -33,8 +33,8 @@
 -define(REQUEST_TIMEOUT, 10000).     %% wait 10sec for answer
 -define(TCP_OPTS, [binary, inet6,
                    {active,       false},
-                                   {send_timeout, 5000},
-                   {backlog,      10},
+				   {send_timeout, 5000},
+                   {backlog,      100},
                    {nodelay,      true},
                    {packet,       raw},
                    {reuseaddr,    true}]).
@@ -144,7 +144,7 @@ open({in, Frames}, #state{mqsocket = MqSocket} = State)
   when length(Frames) == 1 ->
 	?DEBUG("Frames in open: ~p~n", [Frames]),
 	zmq:deliver_accept(MqSocket),
-	{next_state, connected, State, ?REQUEST_TIMEOUT};
+	{next_state, connected, State};
 
 open({in, Frames}, State) ->
 	?DEBUG("Invalid frames in open: ~p~n", [Frames]),
@@ -253,8 +253,8 @@ handle_info({tcp, Socket, Data}, StateName, #state{socket = Socket} = State) ->
 	handle_data(StateName, State1, {next_state, StateName, State1});
 
 handle_info({tcp_closed, Socket}, _StateName, #state{mqsocket = MqSocket, socket = Socket} = State) ->
-	error_logger:info_msg("Client Disconnected."),
-	zmq:deliver_close(MqSocket),
+	?DEBUG("client disconnected: ~w~n", [Socket]),
+	catch zmq:deliver_close(MqSocket),
 	{stop, normal, State}.
 
 handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNext) ->
@@ -303,7 +303,6 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, State) ->
 	?DEBUG("terminate"),
-	gen_tcp:close(State#state.socket),
 	ok.
 
 %%--------------------------------------------------------------------

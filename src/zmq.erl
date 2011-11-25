@@ -5,6 +5,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
+-include("zmq_debug.hrl").
 -include("zmq_internal.hrl").
 
 %% API scheduler
@@ -78,13 +79,13 @@ setopts(Socket, Opts) ->
 	gen_server:call(Socket, {setopts, Opts}).
 
 deliver_recv(Socket, Msg) ->
-	gen_server:call(Socket, {deliver_recv, self(), Msg}).
+	gen_server:cast(Socket, {deliver_recv, self(), Msg}).
 
 deliver_accept(Socket) ->
-	gen_server:call(Socket, {deliver_accept, self()}).
+	gen_server:cast(Socket, {deliver_accept, self()}).
 
 deliver_close(Socket) ->
-	gen_server:call(Socket, {deliver_close, self()}).
+	gen_server:cast(Socket, {deliver_close, self()}).
 
 %%
 %% load balance sending sockets
@@ -153,7 +154,7 @@ handle_call({bind, Port, Opts}, _From, State) ->
 			 undefined -> TcpOpts0;
 			 I -> [{ip, I}|TcpOpts0]
 		 end,
-	io:format("bind: ~p~n", [TcpOpts1]),
+	?DEBUG("bind: ~p~n", [TcpOpts1]),
 	case zmq_tcp_socket:start_link(Port, TcpOpts1) of
 		{ok, Pid} ->
 			{reply, ok, State#zmq_socket{listen_trans = [Pid|State#zmq_socket.listen_trans]}};
@@ -165,7 +166,8 @@ handle_call({connected, TcpSocket, _Opts}, _From, State) ->
 	{ok, Transport} = zmq_link:start_connection(),
 	zmq_link:connect(Transport, TcpSocket),
 	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
-	{reply, ok, State1};
+	State2 = send_queue_run(State1),
+	{reply, ok, State2};
 
 handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
@@ -180,8 +182,21 @@ handle_call({recv, _Timeout}, _From, #zmq_socket{pending_recv = PendingRecv} = S
 handle_call({recv, Timeout}, From, State) ->
 	handle_recv(Timeout, From, State);
 
-handle_call({send, Msg}, _From, State) ->
+handle_call({send, Msg}, From, State) ->
 	case zmq_socket_fsm:check(send, State) of
+		{queue, Action} ->
+			%%TODO: HWM and swap to disk....
+			State1 = State#zmq_socket{send_q = State#zmq_socket.send_q ++ [Msg]},
+			State2 = zmq_socket_fsm:do(queue_send, State1),
+			case Action of
+				return ->
+					{reply, ok, State2};
+				block  ->
+					State3 = State2#zmq_socket{pending_send = From},
+					{noreply, State3}
+			end;
+		{drop, Reply} ->
+			{reply, Reply, State};
 		{error, Reason} ->
 			{reply, {error, Reason}, State};
 		{ok, Transports} ->
@@ -193,24 +208,7 @@ handle_call({send, Msg}, _From, State) ->
 
 handle_call({setopts, Opts}, _From, State) ->
 	NewState = lists:foldl(fun do_setopts/2, State, proplists:unfold(Opts)),
-	{reply, ok, NewState};
-
-handle_call({deliver_accept, Transport}, _From, State) ->
-	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
-	io:format("DELIVER_ACCPET: ~p~n", [State1]),
-	{reply, ok, State1};
-
-handle_call({deliver_close, Transport}, _From, State = #zmq_socket{transports = Transports}) ->
-	unlink(Transport),
-	State0 = State#zmq_socket{transports = lists:delete(Transport, Transports)},
-	State1 = queue_close(Transport, State0),
-	State2 = zmq_socket_fsm:close(Transport, State1),
-	State3 = queue_run(State2),
-	io:format("DELIVER_CLOSE: ~p~n", [State3]),
-	{reply, ok, State3};
-
-handle_call({deliver_recv, Transport, Msg}, _From, State) ->
-	handle_deliver_recv({Transport, Msg}, State).
+	{reply, ok, NewState}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -222,6 +220,26 @@ handle_call({deliver_recv, Transport, Msg}, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+
+handle_cast({deliver_accept, Transport}, State) ->
+	link(Transport),
+	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
+	?DEBUG("DELIVER_ACCPET: ~p~n", [State1]),
+	State2 = send_queue_run(State1),
+	{noreply, State2};
+
+handle_cast({deliver_close, Transport}, State = #zmq_socket{transports = Transports}) ->
+	unlink(Transport),
+	State0 = State#zmq_socket{transports = lists:delete(Transport, Transports)},
+	State1 = queue_close(Transport, State0),
+	State2 = zmq_socket_fsm:close(Transport, State1),
+	State3 = queue_run(State2),
+	?DEBUG("DELIVER_CLOSE: ~p~n", [State3]),
+	{noreply, State3};
+
+handle_cast({deliver_recv, Transport, Msg}, State) ->
+	handle_deliver_recv({Transport, Msg}, State);
+
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
@@ -272,6 +290,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+send_queue_run(State = #zmq_socket{send_q = []}) ->
+	State;
+send_queue_run(State = #zmq_socket{send_q = [Msg], pending_send = From})
+  when From /= none ->
+	case zmq_socket_fsm:check(dequeue_send, State) of
+		{ok, Transports} ->
+			zmq_link_send(Transports, Msg),
+			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
+			gen_server:reply(From, ok),
+			State1#zmq_socket{send_q = [], pending_send = none};
+		_ ->
+			State
+	end;
+send_queue_run(State = #zmq_socket{send_q = [Msg|Rest]}) ->
+	case zmq_socket_fsm:check(dequeue_send, State) of
+		{ok, Transports} ->
+			zmq_link_send(Transports, Msg),
+			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
+			send_queue_run(State1#zmq_socket{send_q = Rest});
+		_ ->
+			State
+	end.
+	
 %% check if should deliver the 'top of queue' message
 queue_run(State) ->
 	case zmq_socket_fsm:check(deliver, State) of
@@ -315,13 +356,13 @@ next_mode(#zmq_socket{mode = active_once} = State) ->
 	State#zmq_socket{mode = passive}.
 
 handle_deliver_recv({Transport, Msg}, MqSState) ->
-	io:format("deliver_recv: ~w, ~w~n", [Transport, Msg]),
+	?DEBUG("deliver_recv: ~w, ~w~n", [Transport, Msg]),
 	case zmq_socket_fsm:check({deliver_recv, Transport}, MqSState) of
 		ok ->
 			MqSState0 = handle_deliver_recv_2({Transport, Msg}, queue_size(MqSState), MqSState),
-			{reply, ok, MqSState0};
+			{noreply, MqSState0};
 		{error, Reason} ->
-			{reply, {error, Reason}, MqSState}
+			{noreply, MqSState}
 	end.
 
 handle_deliver_recv_2({Transport, Msg}, 0, #zmq_socket{mode = Mode} = MqSState)
@@ -368,7 +409,7 @@ handle_recv_2(_Timeout, _From, _, State) ->
 encap_msg(Msg) when is_list(Msg) ->
 	lists:map(fun(M) -> {normal, M} end, Msg).
 decap_msg(Msg) when is_list(Msg) ->
-	io:format("decap: ~p~n", [Msg]),
+	?DEBUG("decap: ~p~n", [Msg]),
 	lists:reverse(lists:foldl(fun({normal, M}, Acc) -> [M|Acc]; (_, Acc) -> Acc end, [], Msg)).
 					   
 zmq_link_send(Transports, Msg)
@@ -396,7 +437,7 @@ queue_close(Transport, MqSState = #zmq_socket{recv_q = Q}) ->
 	MqSState#zmq_socket{recv_q = Q1}.
 	
 dequeue(MqSState = #zmq_socket{recv_q = Q, transports = Transports}) ->
-	io:format("TRANS: ~p, PENDING: ~p~n", [Transports, Q]),
+	?DEBUG("TRANS: ~p, PENDING: ~p~n", [Transports, Q]),
 	case do_dequeue(Transports, Q) of
 		{{Transport, Msg}, Q1} ->
 			Transports1 = lists:delete(Transport, Transports) ++ [Transport],
