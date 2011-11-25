@@ -62,11 +62,9 @@ shutdown_stress_loop(0) ->
 shutdown_stress_loop(N) ->
     {ok, S1} = zmq:socket([{type, rep}, {active, false}]),
 	ok = zmq:bind(S1, 5558 + N, []),
-	io:format("BOUND===================================================== ~w ~n", [S1]),
     shutdown_stress_worker_loop(N, 100),
     ok = join_procs(100),
     zmq:close(S1),
-	io:format("BOUND CLOSED============================================== ~w~n", [S1]),
     shutdown_stress_loop(N-1).
 
 shutdown_no_blocking_test(_Config) ->
@@ -92,11 +90,8 @@ shutdown_stress_worker_loop(P, N) ->
     shutdown_stress_worker_loop(P, N-1).
 
 worker(Pid, S, Port) ->
-	io:format("TRY======================================================= ~w~n", [S]),
     ok = zmq:connect(S, {127,0,0,1}, Port, []),
-	io:format("CONNECTED================================================= ~w~n", [Port]),
     ok = zmq:close(S),
-	io:format("CLOSED==================================================== ~w~n", [S]),
     Pid ! proc_end.
 
 create_bound_pair(Type1, Type2, Mode, IP, Port) ->
