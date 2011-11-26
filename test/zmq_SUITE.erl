@@ -46,9 +46,122 @@
 %%     basic_tests("ipc:///tmp/tester", req, rep, passive).
 
 reqrep_tcp_test_active(_Config) ->
-    basic_tests({127,0,0,1}, 5556, req, rep, active).
+    basic_tests({127,0,0,1}, 5556, req, rep, active, 3).
 reqrep_tcp_test_passive(_Config) ->
-    basic_tests({127,0,0,1}, 5557, req, rep, passive).
+    basic_tests({127,0,0,1}, 5557, req, rep, passive, 3).
+
+reqrep_tcp_large_active(_Config) ->
+    basic_tests({127,0,0,1}, 5556, req, rep, active, 256).
+reqrep_tcp_large_passive(_Config) ->
+    basic_tests({127,0,0,1}, 5557, req, rep, passive, 256).
+
+req_tcp_bind_close(_Config) ->
+    {ok, S} = zmq:socket([{type, req}, {active, false}]),
+	ok = zmq:bind(S, 5555, []),
+	zmq:close(S).
+
+req_tcp_connect_close(_Config) ->
+    {ok, S} = zmq:socket([{type, req}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, []),
+	zmq:close(S).
+
+req_tcp_connect_timeout(_Config) ->
+    {ok, S} = zmq:socket([{type, req}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+	ct:sleep(2000),
+	zmq:close(S).
+
+req_tcp_connecting_timeout(_Config) ->
+	spawn(fun() ->
+				  {ok, L} = gen_tcp:listen(5555,[{active, false}, {packet, raw}, {reuseaddr, true}]),
+				  {ok, S1} = gen_tcp:accept(L),
+				  ct:sleep(15000),   %% keep socket alive for at least 10sec...
+				  gen_tcp:close(S1)
+		  end),
+    {ok, S} = zmq:socket([{type, req}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+	ct:sleep(15000),    %% wait for the connection setup timeout
+	zmq:close(S).
+
+req_tcp_connecting_trash(_Config) ->
+	Self = self(),
+	spawn(fun() ->
+				  {ok, L} = gen_tcp:listen(5555,[{active, false}, {packet, raw}, {reuseaddr, true}]),
+				  {ok, S1} = gen_tcp:accept(L),
+				  T = <<1,16#FF,"TRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASH">>,
+				  gen_tcp:send(S1, list_to_binary([T,T,T,T,T])),
+				  ct:sleep(500),
+				  gen_tcp:close(S1),
+				  Self ! done
+		  end),
+    {ok, S} = zmq:socket([{type, req}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+	receive 
+		done -> ok
+	after
+        1000 ->
+            ct:fail(timeout)
+    end,
+	zmq:close(S).
+
+rep_tcp_connecting_timeout(_Config) ->
+    {ok, S} = zmq:socket([{type, rep}, {active, false}]),
+	ok = zmq:bind(S, 5555, []),
+	spawn(fun() ->
+				  {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
+				  ct:sleep(15000),   %% keep socket alive for at least 10sec...
+				  gen_tcp:close(L)
+		  end),
+	ct:sleep(15000),    %% wait for the connection setup timeout
+	zmq:close(S).
+
+rep_tcp_connecting_trash(_Config) ->
+	Self = self(),
+    {ok, S} = zmq:socket([{type, rep}, {active, false}]),
+	ok = zmq:bind(S, 5555, []),
+	spawn(fun() ->
+				  {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
+				  T = <<1,16#FF,"TRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASH">>,
+				  gen_tcp:send(L, list_to_binary([T,T,T,T,T])),
+				  ct:sleep(500),
+				  gen_tcp:close(L),
+				  Self ! done
+		  end),
+	receive 
+		done -> ok
+	after
+        1000 ->
+            ct:fail(timeout)
+    end,
+	zmq:close(S).
+
+req_tcp_fragment_send(Socket, Data) ->
+	lists:foreach(fun(X) ->	gen_tcp:send(Socket, X), ct:sleep(10) end, [<<X>> || <<X>> <= Data]).
+
+req_tcp_fragment(_Config) ->
+	Self = self(),
+	spawn(fun() ->
+				  {ok, L} = gen_tcp:listen(5555,[binary, {active, false}, {packet, raw}, {reuseaddr, true}, {nodelay, true}]),
+				  {ok, S1} = gen_tcp:accept(L),
+				  req_tcp_fragment_send(S1, <<16#01, 16#7E>>),
+				  gen_tcp:recv(S1, 0),
+				  Self ! connected,
+				  {ok,<<_:4/bytes,"ZZZ">>} = gen_tcp:recv(S1, 0),
+				  req_tcp_fragment_send(S1, <<16#01, 16#7F, 16#06, 16#7E, "Hello">>),
+				  gen_tcp:close(S1),
+				  Self ! done
+		  end),
+    {ok, S} = zmq:socket([{type, req}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+	receive 
+		connected -> ok
+	after
+        1000 ->
+            ct:fail(timeout)
+    end,
+	ok = zmq:send(S, [<<"ZZZ">>]),
+	{ok, [<<"Hello">>]} = zmq:recv(S),
+	zmq:close(S).
 
 shutdown_stress_test(_Config) ->
     shutdown_stress_loop(10).
@@ -151,9 +264,10 @@ ping_pong({S1, S2}, Msg, passive) ->
     {ok, [Msg,Msg]} = zmq:recv(S2),
     ok.
 
-basic_tests(IP, Port, Type1, Type2, Mode) ->
+basic_tests(IP, Port, Type1, Type2, Mode, Size) ->
     {S1, S2} = create_bound_pair(Type1, Type2, Mode, IP, Port),
-    ping_pong({S1, S2}, <<"XXX">>, Mode),
+	Msg = list_to_binary(string:chars($X, Size)),
+    ping_pong({S1, S2}, Msg, Mode),
     ok = zmq:close(S1),
     ok = zmq:close(S2).
 
@@ -167,4 +281,11 @@ end_per_suite(Config) ->
 	Config.
 
 all() -> 
-	[reqrep_tcp_test_active, reqrep_tcp_test_passive, shutdown_no_blocking_test, shutdown_stress_test].
+	[reqrep_tcp_test_active, reqrep_tcp_test_passive,
+	 reqrep_tcp_large_active, reqrep_tcp_large_passive,
+	 shutdown_no_blocking_test,
+	 req_tcp_bind_close, req_tcp_connect_close, req_tcp_connect_timeout,
+	 req_tcp_connecting_timeout, req_tcp_connecting_trash,
+	 rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
+	 req_tcp_fragment,
+	 shutdown_stress_test].
