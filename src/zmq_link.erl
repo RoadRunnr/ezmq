@@ -227,7 +227,7 @@ handle_event(_Event, StateName, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-handle_sync_event(close, _From, _StateName, #state{mqsocket = MqSocket} = State) ->
+handle_sync_event(close, _From, _StateName, State) ->
 	{stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
