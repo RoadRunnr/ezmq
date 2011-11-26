@@ -10,6 +10,7 @@
 		  pending_send = none    :: tuple()|'none',
 
 		  %% all our registered transports
-		  listen_trans   :: list(),
-		  transports     :: list()
+		  connecting    :: orddict:orddict(),
+		  listen_trans  :: orddict:orddict(),
+		  transports    :: list()
 }).

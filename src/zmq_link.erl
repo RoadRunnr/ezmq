@@ -9,19 +9,18 @@
 
 %% API
 -export([start_link/0]).
--export([start_connection/0, accept/3, connect/2, close/1]).
+-export([start_connection/0, accept/3, connect/5, close/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
 		 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
--export([setup/2, setup/3, open/2, connecting/2, connected/2, send/2]).
+-export([setup/2, open/2, connecting/2, connected/2, send/2]).
 
 -define(SERVER, ?MODULE).
 
 -record(state, {
 		  mqsocket                  :: pid(),
 		  socket,
-		  pending_connect,
 		  version = 0,
 		  frames = [],
 		  pending = <<>>
@@ -29,7 +28,7 @@
 
 
 -define(STARTUP_TIMEOUT, 10000).     %% wait 10sec for someone to tell us what to do
--define(CONNECT_TIMEOUT, 30000).     %% wait 30sec for the first packet to arrive
+-define(CONNECT_TIMEOUT, 10000).     %% wait 10sec for the first packet to arrive
 -define(REQUEST_TIMEOUT, 10000).     %% wait 10sec for answer
 -define(TCP_OPTS, [binary, inet6,
                    {active,       false},
@@ -68,9 +67,8 @@ accept(MqSocket, Server, Socket) ->
     gen_tcp:controlling_process(Socket, Server),
 	gen_fsm:send_event(Server, {accept, MqSocket, Socket}).
 
-connect(Server, Socket) ->
-    gen_tcp:controlling_process(Socket, Server),
-	gen_fsm:sync_send_event(Server, {connected, self(), Socket}).
+connect(Server, Address, Port, TcpOpts, Timeout) ->
+	gen_fsm:send_event(Server, {connect, self(), Address, Port, TcpOpts, Timeout}).
 
 send(Server, Msg) ->
 	gen_fsm:send_event(Server, {send, Msg}).
@@ -118,22 +116,36 @@ setup({accept, MqSocket, Socket}, State) ->
 	?DEBUG("got setup~n"),
 	NewState = State#state{mqsocket = MqSocket, socket = Socket},
 	?DEBUG("NewState: ~p~n", [NewState]),
-	send_frames([<<>>], {next_state, open, NewState, ?CONNECT_TIMEOUT}).
+	send_frames([<<>>], {next_state, open, NewState, ?CONNECT_TIMEOUT});
 
-connecting(timeout, State) ->
+setup({connect, MqSocket, Address, Port, TcpOpts, Timeout}, State) ->
+	?DEBUG("got connect: ~w, ~w~n", [Address, Port]),
+
+	%%TODO: socket options
+	case gen_tcp:connect(Address, Port, TcpOpts, Timeout) of
+		{ok, Socket} ->
+			NewState = State#state{mqsocket = MqSocket, socket = Socket},
+			ok = inet:setopts(Socket, [{active, once}]),
+			{next_state, connecting, NewState, ?CONNECT_TIMEOUT};
+		Reply ->
+			zmq:deliver_connect(MqSocket, Reply),
+			{stop, normal, State}				
+	end.
+
+connecting(timeout, State = #state{mqsocket = MqSocket}) ->
 	?DEBUG("timeout in connecting~n"),
-	gen_fsm:reply(State#state.pending_connect, {error, timeout}),
+	zmq:deliver_connect(MqSocket, {error, timeout}),
 	{stop, normal, State};
 
-connecting({in, Frames}, State) when length(Frames) == 1 ->
+connecting({in, Frames}, State = #state{mqsocket = MqSocket})
+  when length(Frames) == 1 ->
 	?DEBUG("Frames in connecting: ~p~n", [Frames]),
-	gen_fsm:reply(State#state.pending_connect, ok),
-	State1 = State#state{pending_connect = undefined},
-	send_frames([<<>>], {next_state, connected, State1});
+	zmq:deliver_connect(MqSocket, ok),
+	send_frames([<<>>], {next_state, connected, State});
 
-connecting({in, Frames}, State) ->
+connecting({in, Frames}, State = #state{mqsocket = MqSocket}) ->
 	?DEBUG("Invalid frames in connecting: ~p~n", [Frames]),
-	gen_fsm:reply(State#state.pending_connect, {error, data}),
+	zmq:deliver_connect(MqSocket, {error, data}),
 	{stop, normal, State}.
 
 open(timeout, State) ->
@@ -181,12 +193,6 @@ connected({send, Msg}, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
-setup({connected, MqSocket, Socket}, From, State) ->
-	?DEBUG("got connected~n"),
-	NewState = State#state{mqsocket = MqSocket, socket = Socket, pending_connect = From},
-	ok = inet:setopts(Socket, [{active, once}]),
-	?DEBUG("NewState: ~p~n", [NewState]),
-	{next_state, connecting, NewState, ?CONNECT_TIMEOUT}.
 
 
 %%--------------------------------------------------------------------
@@ -221,9 +227,7 @@ handle_event(_Event, StateName, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-handle_sync_event(close, _From, _StateName, #state{mqsocket = MqSocket, socket = Socket} = State) ->
-	gen_tcp:close(Socket),
-	zmq:deliver_close(MqSocket),
+handle_sync_event(close, _From, _StateName, #state{mqsocket = MqSocket} = State) ->
 	{stop, normal, ok, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
@@ -243,18 +247,16 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'EXIT', MqSocket, _Reason}, _StateName, #state{mqsocket = MqSocket, socket = Socket} = State) ->
-	gen_tcp:close(Socket),
-	{stop, normal, State};
+handle_info({'EXIT', MqSocket, _Reason}, _StateName, #state{mqsocket = MqSocket} = State) ->
+	{stop, normal, State#state{mqsocket = undefined}};
 
 handle_info({tcp, Socket, Data}, StateName, #state{socket = Socket} = State) ->
 	?DEBUG("handle_info: ~p~n", [Data]),
 	State1 = State#state{pending = <<(State#state.pending)/binary, Data/binary>>},
 	handle_data(StateName, State1, {next_state, StateName, State1});
 
-handle_info({tcp_closed, Socket}, _StateName, #state{mqsocket = MqSocket, socket = Socket} = State) ->
+handle_info({tcp_closed, Socket}, _StateName, #state{socket = Socket} = State) ->
 	?DEBUG("client disconnected: ~w~n", [Socket]),
-	catch zmq:deliver_close(MqSocket),
 	{stop, normal, State}.
 
 handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNext) ->
@@ -301,8 +303,15 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 %% @spec terminate(Reason, StateName, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _StateName, State) ->
+terminate(_Reason, _StateName, #state{mqsocket = MqSocket, socket = Socket})
+  when is_port(Socket) ->
 	?DEBUG("terminate"),
+	catch zmq:deliver_close(MqSocket),
+	gen_tcp:close(Socket),
+	ok;
+terminate(_Reason, _StateName, #state{mqsocket = MqSocket}) ->
+	?DEBUG("terminate"),
+	catch zmq:deliver_close(MqSocket),
 	ok.
 
 %%--------------------------------------------------------------------

@@ -10,13 +10,13 @@
 
 %% API scheduler
 -export([start_link/1, start/1, socket_link/1, socket/1]).
--export([bind/3, connect/4, connect/5, close/1]).
+-export([bind/3, connect/4, close/1]).
 -export([recv/1, recv/2]).
 -export([send/2]).
 -export([setopts/2]).
 
 %% Internal exports
--export([deliver_recv/2, deliver_accept/1, deliver_close/1, lb/2]).
+-export([deliver_recv/2, deliver_accept/1, deliver_connect/2, deliver_close/1, lb/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -51,17 +51,7 @@ bind(Socket, Port, Opts) ->
 	gen_server:call(Socket, {bind, Port, Opts}).
 
 connect(Socket, Address, Port, Opts) ->
-	connect(Socket, Address, Port, Opts, infinity).
-connect(Socket, Address, Port, Opts, Timeout) ->
-	%%TODO: socket options
-	TcpOpts = [binary, inet, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
-	case gen_tcp:connect(Address, Port, TcpOpts, Timeout) of
-		{ok, TcpSocket} ->
-			gen_tcp:controlling_process(TcpSocket, Socket),
-			gen_server:call(Socket, {connected, TcpSocket, Opts});
-		Reply ->
-			Reply
-	end.
+	gen_server:call(Socket, {connect, Address, Port, Opts}).
 
 close(Socket) ->
 	gen_server:call(Socket, close).
@@ -83,6 +73,9 @@ deliver_recv(Socket, Msg) ->
 
 deliver_accept(Socket) ->
 	gen_server:cast(Socket, {deliver_accept, self()}).
+
+deliver_connect(Socket, Reply) ->
+	gen_server:cast(Socket, {deliver_connect, self(), Reply}).
 
 deliver_close(Socket) ->
 	gen_server:cast(Socket, {deliver_close, self()}).
@@ -130,7 +123,8 @@ init({Owner, Opts}) ->
 
 init_socket(Owner, Type, Opts) ->
 	process_flag(trap_exit, true),
-	MqSState0 = #zmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(), listen_trans = [], transports = []},
+	MqSState0 = #zmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
+							connecting = orddict:new(), listen_trans = orddict:new(), transports = []},
 	MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
 	zmq_socket_fsm:init(Type, Opts, MqSState1).
 
@@ -151,23 +145,25 @@ init_socket(Owner, Type, Opts) ->
 handle_call({bind, Port, Opts}, _From, State) ->
 	TcpOpts0 = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
 	TcpOpts1 = case proplists:get_value(ip, Opts) of
-			 undefined -> TcpOpts0;
-			 I -> [{ip, I}|TcpOpts0]
-		 end,
+				   undefined -> TcpOpts0;
+				   I -> [{ip, I}|TcpOpts0]
+			   end,
 	?DEBUG("bind: ~p~n", [TcpOpts1]),
 	case zmq_tcp_socket:start_link(Port, TcpOpts1) of
 		{ok, Pid} ->
-			{reply, ok, State#zmq_socket{listen_trans = [Pid|State#zmq_socket.listen_trans]}};
+			Listen = orddict:append(Pid, {Port, Opts}, State#zmq_socket.listen_trans),
+			{reply, ok, State#zmq_socket{listen_trans = Listen}};
 		Reply ->
 			{reply, Reply, State}
 	end;
 
-handle_call({connected, TcpSocket, _Opts}, _From, State) ->
+handle_call({connect, Address, Port, Opts}, _From, State) ->
 	{ok, Transport} = zmq_link:start_connection(),
-	zmq_link:connect(Transport, TcpSocket),
-	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
-	State2 = send_queue_run(State1),
-	{reply, ok, State2};
+	TcpOpts = [binary, inet, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+	Timeout = proplists:get_value(timeout, Opts, 5000),
+	zmq_link:connect(Transport, Address, Port, TcpOpts, Timeout),
+	Connecting = orddict:append(Transport, {Address, Port, TcpOpts, Timeout}, State#zmq_socket.connecting),
+	{reply, ok, State#zmq_socket{connecting = Connecting}};
 
 handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
@@ -228,6 +224,15 @@ handle_cast({deliver_accept, Transport}, State) ->
 	State2 = send_queue_run(State1),
 	{noreply, State2};
 
+handle_cast({deliver_connect, Transport, ok}, State) ->
+	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
+	State2 = send_queue_run(State1),
+	{noreply, State2};
+
+handle_cast({deliver_connect, _Transport, _Reply}, State) ->
+	%%TODO: shedule reconnect.....
+	{noreply, State};
+
 handle_cast({deliver_close, Transport}, State = #zmq_socket{transports = Transports}) ->
 	unlink(Transport),
 	State0 = State#zmq_socket{transports = lists:delete(Transport, Transports)},
@@ -257,6 +262,19 @@ handle_info(recv_timeout, #zmq_socket{pending_recv = {From, _}} = State) ->
 	gen_server:reply(From, {error, timeout}),
 	State1 = State#zmq_socket{pending_recv = none},
 	{noreply, State1};
+
+handle_info({'EXIT', Pid, _Reason}, State = #zmq_socket{transports = Transports}) ->
+	case lists:member(Pid, Transports) of
+		true ->
+			State0 = State#zmq_socket{transports = lists:delete(Pid, Transports)},
+			State1 = queue_close(Pid, State0),
+			State2 = zmq_socket_fsm:close(Pid, State1),
+			State3 = queue_run(State2),
+			?DEBUG("DELIVER_CLOSE: ~p~n", [State3]),
+			{noreply, State3};
+		_ ->
+			{noreply, State}
+	end;
 
 handle_info(_Info, State) ->
 	{noreply, State}.
@@ -361,7 +379,7 @@ handle_deliver_recv({Transport, Msg}, MqSState) ->
 		ok ->
 			MqSState0 = handle_deliver_recv_2({Transport, Msg}, queue_size(MqSState), MqSState),
 			{noreply, MqSState0};
-		{error, Reason} ->
+		{error, _Reason} ->
 			{noreply, MqSState}
 	end.
 
