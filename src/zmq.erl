@@ -23,6 +23,7 @@
 		 terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE). 
+-record(cargs, {address, port, tcpopts, timeout, failcnt}).
 
 %%%===================================================================
 %%% API
@@ -158,12 +159,12 @@ handle_call({bind, Port, Opts}, _From, State) ->
 	end;
 
 handle_call({connect, Address, Port, Opts}, _From, State) ->
-	{ok, Transport} = zmq_link:start_connection(),
 	TcpOpts = [binary, inet, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
 	Timeout = proplists:get_value(timeout, Opts, 5000),
-	zmq_link:connect(Transport, Address, Port, TcpOpts, Timeout),
-	Connecting = orddict:append(Transport, {Address, Port, TcpOpts, Timeout}, State#zmq_socket.connecting),
-	{reply, ok, State#zmq_socket{connecting = Connecting}};
+	ConnectArgs = #cargs{address = Address, port = Port, tcpopts = TcpOpts,
+						 timeout = Timeout, failcnt = 0},
+	NewState = do_connect(ConnectArgs, State),
+	{reply, ok, NewState};
 
 handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
@@ -229,17 +230,27 @@ handle_cast({deliver_connect, Transport, ok}, State) ->
 	State2 = send_queue_run(State1),
 	{noreply, State2};
 
-handle_cast({deliver_connect, _Transport, _Reply}, State) ->
-	%%TODO: shedule reconnect.....
-	{noreply, State};
+handle_cast({deliver_connect, Transport, _Reply}, State = #zmq_socket{connecting = Connecting}) ->
+	ConnectArgs = orddict:fetch(Transport, Connecting),
+	?DEBUG("CArgs: ~w~n", [ConnectArgs]),
+	erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = ConnectArgs#cargs.failcnt + 1}}),
+	State2 = State#zmq_socket{connecting = orddict:erase(Transport, Connecting)},
+	{noreply, State2};
 
-handle_cast({deliver_close, Transport}, State = #zmq_socket{transports = Transports}) ->
+handle_cast({deliver_close, Transport}, State = #zmq_socket{connecting = Connecting, transports = Transports}) ->
 	unlink(Transport),
 	State0 = State#zmq_socket{transports = lists:delete(Transport, Transports)},
 	State1 = queue_close(Transport, State0),
 	State2 = zmq_socket_fsm:close(Transport, State1),
-	State3 = queue_run(State2),
-	?DEBUG("DELIVER_CLOSE: ~p~n", [State3]),
+	State3 = case orddict:find(Transport, Connecting) of 
+				 {ok, ConnectArgs} ->
+					 erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = 0}}),
+					 State2#zmq_socket{connecting =orddict:erase(Transport, Connecting)};
+				 _ ->
+					 State2
+			 end,
+	State4 = queue_run(State3),
+	?DEBUG("DELIVER_CLOSE: ~p~n", [State4]),
 	{noreply, State3};
 
 handle_cast({deliver_recv, Transport, Msg}, State) ->
@@ -263,15 +274,14 @@ handle_info(recv_timeout, #zmq_socket{pending_recv = {From, _}} = State) ->
 	State1 = State#zmq_socket{pending_recv = none},
 	{noreply, State1};
 
+handle_info({reconnect, ConnectArgs}, #zmq_socket{} = State) ->
+	NewState = do_connect(ConnectArgs, State),
+	{noreply, NewState};
+
 handle_info({'EXIT', Pid, _Reason}, State = #zmq_socket{transports = Transports}) ->
 	case lists:member(Pid, Transports) of
 		true ->
-			State0 = State#zmq_socket{transports = lists:delete(Pid, Transports)},
-			State1 = queue_close(Pid, State0),
-			State2 = zmq_socket_fsm:close(Pid, State1),
-			State3 = queue_run(State2),
-			?DEBUG("DELIVER_CLOSE: ~p~n", [State3]),
-			{noreply, State3};
+			handle_cast({deliver_close, Pid}, State);
 		_ ->
 			{noreply, State}
 	end;
@@ -307,6 +317,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+do_connect(ConnectArgs, State) ->
+	?DEBUG("starting connect: ~w~n", [ConnectArgs]),
+	#cargs{address = Address, port = Port, tcpopts = TcpOpts,
+		   timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
+	{ok, Transport} = zmq_link:start_connection(),
+	zmq_link:connect(Transport, Address, Port, TcpOpts, Timeout),
+	Connecting = orddict:store(Transport, ConnectArgs, State#zmq_socket.connecting),
+	State#zmq_socket{connecting = Connecting}.
 
 send_queue_run(State = #zmq_socket{send_q = []}) ->
 	State;
