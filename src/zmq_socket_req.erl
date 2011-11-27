@@ -5,7 +5,8 @@
 %% --------------------------------------------------------------------
 -include("zmq_internal.hrl").
 
--export([init/1, close/4, idle/4, pending/4, send_queued/4, reply/4]).
+-export([init/1, close/4, encap_msg/4, decap_msg/4]).
+-export([idle/4, pending/4, send_queued/4, reply/4]).
 
 -record(state, {
 		  last_send = none  :: pid()|'none'
@@ -36,9 +37,14 @@ close(_StateName, _Transport, MqSState, State) ->
 	State1 = State#state{last_send = none},
 	{next_state, idle, MqSState, State1}.
 
-idle(check, send, #zmq_socket{transports = []}, _State) ->
+encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+	zmq:simple_encap_msg(Msg).
+decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+	zmq:simple_decap_msg(Msg).
+
+idle(check, {send, _Msg}, #zmq_socket{transports = []}, _State) ->
 	{queue, block};
-idle(check, send, #zmq_socket{transports = [Head|_]}, _State) ->
+idle(check, {send, _Msg}, #zmq_socket{transports = [Head|_]}, _State) ->
 	{ok, Head};
 idle(check, _, _MqSState, _State) ->
 	{error, fsm};
@@ -53,7 +59,7 @@ idle(do, queue_send, MqSState, State) ->
 idle(do, _, _MqSState, _State) ->
 	{error, fsm}.
 
-send_queued(check, send, #zmq_socket{transports = []}, _State) ->
+send_queued(check, {send, _Msg}, #zmq_socket{transports = []}, _State) ->
 	{queue, block};
 send_queued(check, dequeue_send, #zmq_socket{transports = [Head|_]}, _State) ->
 	{ok, Head};

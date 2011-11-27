@@ -82,6 +82,39 @@ req_tcp_connecting_timeout(_Config) ->
     ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	ct:sleep(15000),    %% wait for the connection setup timeout
 	zmq:close(S).
+dealer_tcp_bind_close(_Config) ->
+    {ok, S} = zmq:socket([{type, dealer}, {active, false}]),
+	ok = zmq:bind(S, 5555, []),
+	zmq:close(S).
+
+dealer_tcp_connect_close(_Config) ->
+    {ok, S} = zmq:socket([{type, dealer}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, []),
+	zmq:close(S).
+
+dealer_tcp_connect_timeout(_Config) ->
+    {ok, S} = zmq:socket([{type, dealer}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+	ct:sleep(2000),
+	zmq:close(S).
+
+dealer_tcp_connecting_timeout(_Config) ->
+	spawn(fun() ->
+				  {ok, L} = gen_tcp:listen(5555,[{active, false}, {packet, raw}, {reuseaddr, true}]),
+				  {ok, S1} = gen_tcp:accept(L),
+				  ct:sleep(15000),   %% keep socket alive for at least 10sec...
+				  gen_tcp:close(S1)
+		  end),
+    {ok, S} = zmq:socket([{type, dealer}, {active, false}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+	ct:sleep(15000),    %% wait for the connection setup timeout
+	zmq:close(S).
 
 req_tcp_connecting_trash(_Config) ->
 	Self = self(),
@@ -162,6 +195,53 @@ req_tcp_fragment(_Config) ->
 	ok = zmq:send(S, [<<"ZZZ">>]),
 	{ok, [<<"Hello">>]} = zmq:recv(S),
 	zmq:close(S).
+
+create_multi_connect(Type, Active, IP, Port, 0, Acc) ->
+	Acc;
+create_multi_connect(Type, Active, IP, Port, Cnt, Acc) ->
+	{ok, S2} = zmq:socket([{type, Type}, {active, Active}]),
+    ok = zmq:connect(S2, IP, Port, []),
+	create_multi_connect(Type, Active, IP, Port, Cnt - 1, [S2|Acc]).
+
+create_bound_pair_multi(Type1, Type2, Cnt2, Mode, IP, Port) ->
+    Active = if
+        Mode =:= active ->
+            true;
+        Mode =:= passive ->
+            false
+    end,
+    {ok, S1} = zmq:socket([{type, Type1}, {active, Active}]),
+    ok = zmq:bind(S1, Port, []),
+
+	S2 = create_multi_connect(Type2, Active, IP, Port, Cnt2, []),
+	ct:sleep(10),  %% give it a moment to establish all sockets....
+    {S1, S2}.
+
+basic_test_dealer_rep(IP, Port, Cnt2, Mode, Size) ->
+    {S1, S2} = create_bound_pair_multi(dealer, rep, Cnt2, Mode, IP, Port),
+	Msg = list_to_binary(string:chars($X, Size)),
+
+	%% send a message for each client Socket and expect a result on each socket
+	lists:foreach(fun(_S) -> ok = zmq:send(S1, [Msg]) end, S2),
+	lists:foreach(fun(S) -> {ok, [Msg]} = zmq:recv(S) end, S2),
+
+    ok = zmq:close(S1),
+	lists:foreach(fun(S) -> ok = zmq:close(S) end, S2).
+
+basic_test_dealer_req(IP, Port, Cnt2, Mode, Size) ->
+    {S1, S2} = create_bound_pair_multi(dealer, req, Cnt2, Mode, IP, Port),
+	Msg = list_to_binary(string:chars($X, Size)),
+
+	%% send a message for each client Socket and expect a result on each socket
+	lists:foreach(fun(S) -> ok = zmq:send(S, [Msg]) end, S2),
+	lists:foreach(fun(_S) -> {ok, [Msg]} = zmq:recv(S1) end, S2),
+
+    ok = zmq:close(S1),
+	lists:foreach(fun(S) -> ok = zmq:close(S) end, S2).
+
+basic_tests_dealer(_Config) ->
+	basic_test_dealer_req({127,0,0,1}, 5559, 10, passive, 3),
+	basic_test_dealer_rep({127,0,0,1}, 5560, 10, passive, 3).
 
 shutdown_stress_test(_Config) ->
     shutdown_stress_loop(10).
@@ -288,4 +368,5 @@ all() ->
 	 req_tcp_connecting_timeout, req_tcp_connecting_trash,
 	 rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
 	 req_tcp_fragment,
+	 dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout, basic_tests_dealer,
 	 shutdown_stress_test].

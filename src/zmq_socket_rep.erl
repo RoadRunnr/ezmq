@@ -5,7 +5,8 @@
 %% --------------------------------------------------------------------
 -include("zmq_internal.hrl").
 
--export([init/1, close/4, idle/4, pending/4, processing/4]).
+-export([init/1, close/4, encap_msg/4, decap_msg/4]).
+-export([idle/4, pending/4, processing/4]).
 
 -record(state, {
 		  last_recv = none  :: pid()|'none'
@@ -35,6 +36,11 @@ init(_Opts) ->
 close(_StateName, _Transport, MqSState, State) ->
 	State1 = State#state{last_recv = none},
 	{next_state, idle, MqSState, State1}.
+
+encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+	zmq:simple_encap_msg(Msg).
+decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+	zmq:simple_decap_msg(Msg).
 
 idle(check, recv, _MqSState, _State) ->
 	ok;
@@ -72,7 +78,7 @@ pending(do, {deliver, Transport}, MqSState, State) ->
 pending(do, _, _MqSState, _State) ->
 	{error, fsm}.
 
-processing(check, send, _MqSState, #state{last_recv = Transport}) ->
+processing(check, {send, _Msg}, _MqSState, #state{last_recv = Transport}) ->
 	{ok, Transport};
 processing(check, _, _MqSState, _State) ->
 	{error, fsm};

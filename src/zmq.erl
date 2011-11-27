@@ -16,7 +16,8 @@
 -export([setopts/2]).
 
 %% Internal exports
--export([deliver_recv/2, deliver_accept/1, deliver_connect/2, deliver_close/1, lb/2]).
+-export([deliver_recv/2, deliver_accept/1, deliver_connect/2, deliver_close/1]).
+-export([simple_encap_msg/1, simple_decap_msg/1, lb/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -111,7 +112,7 @@ lb(Transport, MqSState = #zmq_socket{transports = Trans}) ->
 %% @end
 %%--------------------------------------------------------------------
 socket_types(Type) ->
-	SupMod = [{req, zmq_socket_req},{rep, zmq_socket_rep}],
+	SupMod = [{req, zmq_socket_req}, {rep, zmq_socket_rep}, {dealer, zmq_socket_dealer}, {router, zmq_socket_router}],
 	proplists:get_value(Type, SupMod).
 			
 init({Owner, Opts}) ->
@@ -180,7 +181,7 @@ handle_call({recv, Timeout}, From, State) ->
 	handle_recv(Timeout, From, State);
 
 handle_call({send, Msg}, From, State) ->
-	case zmq_socket_fsm:check(send, State) of
+	case zmq_socket_fsm:check({send, Msg}, State) of
 		{queue, Action} ->
 			%%TODO: HWM and swap to disk....
 			State1 = State#zmq_socket{send_q = State#zmq_socket.send_q ++ [Msg]},
@@ -197,7 +198,7 @@ handle_call({send, Msg}, From, State) ->
 		{error, Reason} ->
 			{reply, {error, Reason}, State};
 		{ok, Transports} ->
-			zmq_link_send(Transports, Msg),
+			zmq_link_send({Transports, Msg}, State),
 			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
 			State2 = queue_run(State1),
 			{reply, ok, State2}
@@ -333,7 +334,7 @@ send_queue_run(State = #zmq_socket{send_q = [Msg], pending_send = From})
   when From /= none ->
 	case zmq_socket_fsm:check(dequeue_send, State) of
 		{ok, Transports} ->
-			zmq_link_send(Transports, Msg),
+			zmq_link_send({Transports, Msg}, State),
 			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
 			gen_server:reply(From, ok),
 			State1#zmq_socket{send_q = [], pending_send = none};
@@ -343,7 +344,7 @@ send_queue_run(State = #zmq_socket{send_q = [Msg], pending_send = From})
 send_queue_run(State = #zmq_socket{send_q = [Msg|Rest]}) ->
 	case zmq_socket_fsm:check(dequeue_send, State) of
 		{ok, Transports} ->
-			zmq_link_send(Transports, Msg),
+			zmq_link_send({Transports, Msg}, State),
 			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
 			send_queue_run(State1#zmq_socket{send_q = Rest});
 		_ ->
@@ -379,11 +380,11 @@ send_owner({Transport, Msg}, #zmq_socket{pending_recv = {From, Ref}} = State) ->
 		_ -> erlang:cancel_timer(Ref)
 	end,
 	State1 = State#zmq_socket{pending_recv = none},
-	gen_server:reply(From, {ok, decap_msg(Msg)}),
+	gen_server:reply(From, {ok, zmq_socket_fsm:decap_msg({Transport, Msg}, State)}),
 	zmq_socket_fsm:do({deliver, Transport}, State1);
 send_owner({Transport, Msg}, #zmq_socket{owner = Owner, mode = Mode} = State)
   when Mode == active; Mode == active_once ->
-	Owner ! {zmq, self(), decap_msg(Msg)},
+	Owner ! {zmq, self(), zmq_socket_fsm:decap_msg({Transport, Msg}, State)},
 	NewState = zmq_socket_fsm:do({deliver, Transport}, State),
 	next_mode(NewState).
 
@@ -438,23 +439,24 @@ handle_recv_2(_Timeout, _From, _, State) ->
 	case dequeue(State) of
 		{{Transport, Msg}, State0} ->
 			State2 = zmq_socket_fsm:do({deliver, Transport}, State0),
-			{reply, {ok, decap_msg(Msg)}, State2};
+			{reply, {ok, zmq_socket_fsm:decap_msg({Transport, Msg}, State)}, State2};
 		_ ->
 			{reply, {error, internal}, State}
 	end.
 
-encap_msg(Msg) when is_list(Msg) ->
+simple_encap_msg(Msg) when is_list(Msg) ->
 	lists:map(fun(M) -> {normal, M} end, Msg).
-decap_msg(Msg) when is_list(Msg) ->
-	?DEBUG("decap: ~p~n", [Msg]),
+simple_decap_msg(Msg) when is_list(Msg) ->
 	lists:reverse(lists:foldl(fun({normal, M}, Acc) -> [M|Acc]; (_, Acc) -> Acc end, [], Msg)).
 					   
-zmq_link_send(Transports, Msg)
+zmq_link_send({Transports, Msg}, State)
   when is_list(Transports) ->
-	Msg1 = encap_msg(Msg),
-	lists:foreach(fun(T) -> zmq_link:send(T, Msg1) end, Transports);
-zmq_link_send(Transport, Msg) ->
-	zmq_link:send(Transport, encap_msg(Msg)).
+	lists:foreach(fun(T) ->
+						  Msg1 = zmq_socket_fsm:encap_msg({T, Msg}, State),
+						  zmq_link:send(T, Msg1)
+				  end, Transports);
+zmq_link_send({Transport, Msg}, State) ->
+	zmq_link:send(Transport, zmq_socket_fsm:encap_msg({Transport, Msg}, State)).
 
 %%
 %% round robin queue

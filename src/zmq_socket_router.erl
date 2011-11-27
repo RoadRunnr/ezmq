@@ -1,4 +1,4 @@
--module(zmq_socket_dealer).
+-module(zmq_socket_router).
 
 %% --------------------------------------------------------------------
 %% Include files
@@ -35,19 +35,20 @@ init(_Opts) ->
 close(_StateName, _Transport, MqSState, State) ->
 	{next_state, idle, MqSState, State}.
 
-encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+encap_msg({_Transport, {_Identity, Msg}}, _StateName, _MqSState, _State) ->
 	zmq:simple_encap_msg(Msg).
-decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	zmq:simple_decap_msg(Msg).
+decap_msg({Transport, Msg}, _StateName, _MqSState, _State) ->
+	{Transport, zmq:simple_decap_msg(Msg)}.
 
 idle(check, {send, _Msg}, #zmq_socket{transports = []}, _State) ->
-	{queue, block};
-idle(check, {send, _Msg}, #zmq_socket{transports = [Head|_]}, _State) ->
-	{ok, Head};
-idle(check, dequeue_send, #zmq_socket{transports = [Head|_]}, _State) ->
-	{ok, Head};
-idle(check, dequeue_send, _MqSState, _State) ->
-	keep;
+	{drop, not_connected};
+idle(check, {send, {Identity, _Msg}}, #zmq_socket{transports = Transports}, _State) ->
+	case lists:member(Identity, Transports) of
+		true ->
+			{ok, Identity};
+		_ ->
+			{drop, invalid_identity}
+	end;
 idle(check, deliver, _MqSState, _State) ->
 	ok;
 idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
