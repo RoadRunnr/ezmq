@@ -1,9 +1,9 @@
--module(zmq_socket_dealer).
+-module(ezmq_socket_dealer).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("zmq_internal.hrl").
+-include("ezmq_internal.hrl").
 
 -export([init/1, close/4, encap_msg/4, decap_msg/4]).
 -export([idle/4]).
@@ -16,7 +16,7 @@
 %%%===================================================================
 
 %%%===================================================================
-%%% zmq_socket callbacks
+%%% ezmq_socket callbacks
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -36,15 +36,15 @@ close(_StateName, _Transport, MqSState, State) ->
 	{next_state, idle, MqSState, State}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	zmq:simple_encap_msg(Msg).
+	ezmq:simple_encap_msg(Msg).
 decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	zmq:simple_decap_msg(Msg).
+	ezmq:simple_decap_msg(Msg).
 
-idle(check, {send, _Msg}, #zmq_socket{transports = []}, _State) ->
+idle(check, {send, _Msg}, #ezmq_socket{transports = []}, _State) ->
 	{queue, block};
-idle(check, {send, _Msg}, #zmq_socket{transports = [Head|_]}, _State) ->
+idle(check, {send, _Msg}, #ezmq_socket{transports = [Head|_]}, _State) ->
 	{ok, Head};
-idle(check, dequeue_send, #zmq_socket{transports = [Head|_]}, _State) ->
+idle(check, dequeue_send, #ezmq_socket{transports = [Head|_]}, _State) ->
 	{ok, Head};
 idle(check, dequeue_send, _MqSState, _State) ->
 	keep;
@@ -60,7 +60,7 @@ idle(check, _, _MqSState, _State) ->
 idle(do, queue_send, MqSState, State) ->
 	{next_state, idle, MqSState, State};
 idle(do, {deliver_send, Transport}, MqSState, State) ->
-	MqSState1 = zmq:lb(Transport, MqSState),
+	MqSState1 = ezmq:lb(Transport, MqSState),
 	{next_state, idle, MqSState1, State};
 idle(do, {deliver, _Transport}, MqSState, State) ->
 	{next_state, idle, MqSState, State};

@@ -1,4 +1,4 @@
--module(zmq_app).
+-module(ezmq_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    zmq_sup:start_link().
+    ezmq_sup:start_link().
 
 stop(_State) ->
     ok.

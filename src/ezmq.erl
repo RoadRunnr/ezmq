@@ -1,12 +1,12 @@
--module(zmq).
+-module(ezmq).
 
 -behaviour(gen_server).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("zmq_debug.hrl").
--include("zmq_internal.hrl").
+-include("ezmq_debug.hrl").
+-include("ezmq_internal.hrl").
 
 %% API scheduler
 -export([start_link/1, start/1, socket_link/1, socket/1]).
@@ -91,13 +91,13 @@ deliver_close(Socket) ->
 %%
 %% CHECK: is 0MQ actually doing anything else?
 %%
-lb(Transports, MqSState = #zmq_socket{transports = Trans}) when is_list(Transports) ->
+lb(Transports, MqSState = #ezmq_socket{transports = Trans}) when is_list(Transports) ->
 	Trans1 = lists:subtract(Trans, Transports) ++ Transports,
-	MqSState#zmq_socket{transports = Trans1};
+	MqSState#ezmq_socket{transports = Trans1};
 
-lb(Transport, MqSState = #zmq_socket{transports = Trans}) ->
+lb(Transport, MqSState = #ezmq_socket{transports = Trans}) ->
 	Trans1 = lists:delete(Transport, Trans) ++ [Transport],
-	MqSState#zmq_socket{transports = Trans1}.
+	MqSState#ezmq_socket{transports = Trans1}.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -115,7 +115,7 @@ lb(Transport, MqSState = #zmq_socket{transports = Trans}) ->
 %% @end
 %%--------------------------------------------------------------------
 socket_types(Type) ->
-	SupMod = [{req, zmq_socket_req}, {rep, zmq_socket_rep}, {dealer, zmq_socket_dealer}, {router, zmq_socket_router}],
+	SupMod = [{req, ezmq_socket_req}, {rep, ezmq_socket_rep}, {dealer, ezmq_socket_dealer}, {router, ezmq_socket_router}],
 	proplists:get_value(Type, SupMod).
 			
 init({Owner, Opts}) ->
@@ -128,10 +128,10 @@ init({Owner, Opts}) ->
 
 init_socket(Owner, Type, Opts) ->
 	process_flag(trap_exit, true),
-	MqSState0 = #zmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
+	MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
 							connecting = orddict:new(), listen_trans = orddict:new(), transports = []},
 	MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
-	zmq_socket_fsm:init(Type, Opts, MqSState1).
+	ezmq_socket_fsm:init(Type, Opts, MqSState1).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -154,10 +154,10 @@ handle_call({bind, Port, Opts}, _From, State) ->
 				   I -> [{ip, I}|TcpOpts0]
 			   end,
 	?DEBUG("bind: ~p~n", [TcpOpts1]),
-	case zmq_tcp_socket:start_link(Port, TcpOpts1) of
+	case ezmq_tcp_socket:start_link(Port, TcpOpts1) of
 		{ok, Pid} ->
-			Listen = orddict:append(Pid, {Port, Opts}, State#zmq_socket.listen_trans),
-			{reply, ok, State#zmq_socket{listen_trans = Listen}};
+			Listen = orddict:append(Pid, {Port, Opts}, State#ezmq_socket.listen_trans),
+			{reply, ok, State#ezmq_socket{listen_trans = Listen}};
 		Reply ->
 			{reply, Reply, State}
 	end;
@@ -173,10 +173,10 @@ handle_call({connect, Address, Port, Opts}, _From, State) ->
 handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
 
-handle_call({recv, _Timeout}, _From, #zmq_socket{mode = Mode} = State)
+handle_call({recv, _Timeout}, _From, #ezmq_socket{mode = Mode} = State)
   when Mode /= passive ->
 	{reply, {error, active}, State};
-handle_call({recv, _Timeout}, _From, #zmq_socket{pending_recv = PendingRecv} = State)
+handle_call({recv, _Timeout}, _From, #ezmq_socket{pending_recv = PendingRecv} = State)
   when PendingRecv /= none ->
 	Reply = {error, already_recv},
 	{reply, Reply, State};
@@ -184,16 +184,16 @@ handle_call({recv, Timeout}, From, State) ->
 	handle_recv(Timeout, From, State);
 
 handle_call({send, Msg}, From, State) ->
-	case zmq_socket_fsm:check({send, Msg}, State) of
+	case ezmq_socket_fsm:check({send, Msg}, State) of
 		{queue, Action} ->
 			%%TODO: HWM and swap to disk....
-			State1 = State#zmq_socket{send_q = State#zmq_socket.send_q ++ [Msg]},
-			State2 = zmq_socket_fsm:do(queue_send, State1),
+			State1 = State#ezmq_socket{send_q = State#ezmq_socket.send_q ++ [Msg]},
+			State2 = ezmq_socket_fsm:do(queue_send, State1),
 			case Action of
 				return ->
 					{reply, ok, State2};
 				block  ->
-					State3 = State2#zmq_socket{pending_send = From},
+					State3 = State2#ezmq_socket{pending_send = From},
 					{noreply, State3}
 			end;
 		{drop, Reply} ->
@@ -201,8 +201,8 @@ handle_call({send, Msg}, From, State) ->
 		{error, Reason} ->
 			{reply, {error, Reason}, State};
 		{ok, Transports} ->
-			zmq_link_send({Transports, Msg}, State),
-			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
+			ezmq_link_send({Transports, Msg}, State),
+			State1 = ezmq_socket_fsm:do({deliver_send, Transports}, State),
 			State2 = queue_run(State1),
 			{reply, ok, State2}
 	end;
@@ -224,32 +224,32 @@ handle_call({setopts, Opts}, _From, State) ->
 
 handle_cast({deliver_accept, Transport}, State) ->
 	link(Transport),
-	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
+	State1 = State#ezmq_socket{transports = [Transport|State#ezmq_socket.transports]},
 	?DEBUG("DELIVER_ACCPET: ~p~n", [State1]),
 	State2 = send_queue_run(State1),
 	{noreply, State2};
 
 handle_cast({deliver_connect, Transport, ok}, State) ->
-	State1 = State#zmq_socket{transports = [Transport|State#zmq_socket.transports]},
+	State1 = State#ezmq_socket{transports = [Transport|State#ezmq_socket.transports]},
 	State2 = send_queue_run(State1),
 	{noreply, State2};
 
-handle_cast({deliver_connect, Transport, _Reply}, State = #zmq_socket{connecting = Connecting}) ->
+handle_cast({deliver_connect, Transport, _Reply}, State = #ezmq_socket{connecting = Connecting}) ->
 	ConnectArgs = orddict:fetch(Transport, Connecting),
 	?DEBUG("CArgs: ~w~n", [ConnectArgs]),
 	erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = ConnectArgs#cargs.failcnt + 1}}),
-	State2 = State#zmq_socket{connecting = orddict:erase(Transport, Connecting)},
+	State2 = State#ezmq_socket{connecting = orddict:erase(Transport, Connecting)},
 	{noreply, State2};
 
-handle_cast({deliver_close, Transport}, State = #zmq_socket{connecting = Connecting, transports = Transports}) ->
+handle_cast({deliver_close, Transport}, State = #ezmq_socket{connecting = Connecting, transports = Transports}) ->
 	unlink(Transport),
-	State0 = State#zmq_socket{transports = lists:delete(Transport, Transports)},
+	State0 = State#ezmq_socket{transports = lists:delete(Transport, Transports)},
 	State1 = queue_close(Transport, State0),
-	State2 = zmq_socket_fsm:close(Transport, State1),
+	State2 = ezmq_socket_fsm:close(Transport, State1),
 	State3 = case orddict:find(Transport, Connecting) of 
 				 {ok, ConnectArgs} ->
 					 erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = 0}}),
-					 State2#zmq_socket{connecting =orddict:erase(Transport, Connecting)};
+					 State2#ezmq_socket{connecting =orddict:erase(Transport, Connecting)};
 				 _ ->
 					 State2
 			 end,
@@ -273,16 +273,16 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(recv_timeout, #zmq_socket{pending_recv = {From, _}} = State) ->
+handle_info(recv_timeout, #ezmq_socket{pending_recv = {From, _}} = State) ->
 	gen_server:reply(From, {error, timeout}),
-	State1 = State#zmq_socket{pending_recv = none},
+	State1 = State#ezmq_socket{pending_recv = none},
 	{noreply, State1};
 
-handle_info({reconnect, ConnectArgs}, #zmq_socket{} = State) ->
+handle_info({reconnect, ConnectArgs}, #ezmq_socket{} = State) ->
 	NewState = do_connect(ConnectArgs, State),
 	{noreply, NewState};
 
-handle_info({'EXIT', Pid, _Reason}, State = #zmq_socket{transports = Transports}) ->
+handle_info({'EXIT', Pid, _Reason}, State = #ezmq_socket{transports = Transports}) ->
 	case lists:member(Pid, Transports) of
 		true ->
 			handle_cast({deliver_close, Pid}, State);
@@ -326,46 +326,46 @@ do_connect(ConnectArgs, State) ->
 	?DEBUG("starting connect: ~w~n", [ConnectArgs]),
 	#cargs{address = Address, port = Port, tcpopts = TcpOpts,
 		   timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
-	{ok, Transport} = zmq_link:start_connection(),
-	zmq_link:connect(Transport, Address, Port, TcpOpts, Timeout),
-	Connecting = orddict:store(Transport, ConnectArgs, State#zmq_socket.connecting),
-	State#zmq_socket{connecting = Connecting}.
+	{ok, Transport} = ezmq_link:start_connection(),
+	ezmq_link:connect(Transport, Address, Port, TcpOpts, Timeout),
+	Connecting = orddict:store(Transport, ConnectArgs, State#ezmq_socket.connecting),
+	State#ezmq_socket{connecting = Connecting}.
 
-send_queue_run(State = #zmq_socket{send_q = []}) ->
+send_queue_run(State = #ezmq_socket{send_q = []}) ->
 	State;
-send_queue_run(State = #zmq_socket{send_q = [Msg], pending_send = From})
+send_queue_run(State = #ezmq_socket{send_q = [Msg], pending_send = From})
   when From /= none ->
-	case zmq_socket_fsm:check(dequeue_send, State) of
+	case ezmq_socket_fsm:check(dequeue_send, State) of
 		{ok, Transports} ->
-			zmq_link_send({Transports, Msg}, State),
-			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
+			ezmq_link_send({Transports, Msg}, State),
+			State1 = ezmq_socket_fsm:do({deliver_send, Transports}, State),
 			gen_server:reply(From, ok),
-			State1#zmq_socket{send_q = [], pending_send = none};
+			State1#ezmq_socket{send_q = [], pending_send = none};
 		_ ->
 			State
 	end;
-send_queue_run(State = #zmq_socket{send_q = [Msg|Rest]}) ->
-	case zmq_socket_fsm:check(dequeue_send, State) of
+send_queue_run(State = #ezmq_socket{send_q = [Msg|Rest]}) ->
+	case ezmq_socket_fsm:check(dequeue_send, State) of
 		{ok, Transports} ->
-			zmq_link_send({Transports, Msg}, State),
-			State1 = zmq_socket_fsm:do({deliver_send, Transports}, State),
-			send_queue_run(State1#zmq_socket{send_q = Rest});
+			ezmq_link_send({Transports, Msg}, State),
+			State1 = ezmq_socket_fsm:do({deliver_send, Transports}, State),
+			send_queue_run(State1#ezmq_socket{send_q = Rest});
 		_ ->
 			State
 	end.
 	
 %% check if should deliver the 'top of queue' message
 queue_run(State) ->
-	case zmq_socket_fsm:check(deliver, State) of
+	case ezmq_socket_fsm:check(deliver, State) of
 		ok -> queue_run_2(State);
 		_ -> State
 	end.
-queue_run_2(#zmq_socket{mode = Mode} = State)
+queue_run_2(#ezmq_socket{mode = Mode} = State)
   when Mode == active; Mode == active_once ->
 	run_recv_q(State);
-queue_run_2(#zmq_socket{pending_recv = {_From, _Ref}} = State) ->
+queue_run_2(#ezmq_socket{pending_recv = {_From, _Ref}} = State) ->
 	run_recv_q(State);
-queue_run_2(#zmq_socket{mode = passive} = State) ->
+queue_run_2(#ezmq_socket{mode = passive} = State) ->
 	State.
 
 run_recv_q(State) ->
@@ -377,28 +377,28 @@ run_recv_q(State) ->
 	end.
 
 %% send a specific message to the owner
-send_owner({Transport, Msg}, #zmq_socket{pending_recv = {From, Ref}} = State) ->
+send_owner({Transport, Msg}, #ezmq_socket{pending_recv = {From, Ref}} = State) ->
 	case Ref of
 		none -> ok;
 		_ -> erlang:cancel_timer(Ref)
 	end,
-	State1 = State#zmq_socket{pending_recv = none},
-	gen_server:reply(From, {ok, zmq_socket_fsm:decap_msg({Transport, Msg}, State)}),
-	zmq_socket_fsm:do({deliver, Transport}, State1);
-send_owner({Transport, Msg}, #zmq_socket{owner = Owner, mode = Mode} = State)
+	State1 = State#ezmq_socket{pending_recv = none},
+	gen_server:reply(From, {ok, ezmq_socket_fsm:decap_msg({Transport, Msg}, State)}),
+	ezmq_socket_fsm:do({deliver, Transport}, State1);
+send_owner({Transport, Msg}, #ezmq_socket{owner = Owner, mode = Mode} = State)
   when Mode == active; Mode == active_once ->
-	Owner ! {zmq, self(), zmq_socket_fsm:decap_msg({Transport, Msg}, State)},
-	NewState = zmq_socket_fsm:do({deliver, Transport}, State),
+	Owner ! {ezmq, self(), ezmq_socket_fsm:decap_msg({Transport, Msg}, State)},
+	NewState = ezmq_socket_fsm:do({deliver, Transport}, State),
 	next_mode(NewState).
 
-next_mode(#zmq_socket{mode = active} = State) ->
+next_mode(#ezmq_socket{mode = active} = State) ->
 	queue_run(State);
-next_mode(#zmq_socket{mode = active_once} = State) ->
-	State#zmq_socket{mode = passive}.
+next_mode(#ezmq_socket{mode = active_once} = State) ->
+	State#ezmq_socket{mode = passive}.
 
 handle_deliver_recv({Transport, Msg}, MqSState) ->
 	?DEBUG("deliver_recv: ~w, ~w~n", [Transport, Msg]),
-	case zmq_socket_fsm:check({deliver_recv, Transport}, MqSState) of
+	case ezmq_socket_fsm:check({deliver_recv, Transport}, MqSState) of
 		ok ->
 			MqSState0 = handle_deliver_recv_2({Transport, Msg}, queue_size(MqSState), MqSState),
 			{noreply, MqSState0};
@@ -406,15 +406,15 @@ handle_deliver_recv({Transport, Msg}, MqSState) ->
 			{noreply, MqSState}
 	end.
 
-handle_deliver_recv_2({Transport, Msg}, 0, #zmq_socket{mode = Mode} = MqSState)
+handle_deliver_recv_2({Transport, Msg}, 0, #ezmq_socket{mode = Mode} = MqSState)
   when Mode == active; Mode == active_once ->
-	case zmq_socket_fsm:check(deliver, MqSState) of
+	case ezmq_socket_fsm:check(deliver, MqSState) of
 		ok -> send_owner({Transport, Msg}, MqSState);
 		_ -> queue({Transport, Msg}, MqSState)
 	end;
 
-handle_deliver_recv_2({Transport, Msg}, 0, #zmq_socket{pending_recv = {_From, _Ref}} = MqSState) ->
-	case zmq_socket_fsm:check(deliver, MqSState) of
+handle_deliver_recv_2({Transport, Msg}, 0, #ezmq_socket{pending_recv = {_From, _Ref}} = MqSState) ->
+	case ezmq_socket_fsm:check(deliver, MqSState) of
 		ok -> send_owner({Transport, Msg}, MqSState);
 		_ -> queue({Transport, Msg}, MqSState)
 	end;
@@ -423,7 +423,7 @@ handle_deliver_recv_2({Transport, Msg}, _, MqSState) ->
 	queue({Transport, Msg}, MqSState).
 
 handle_recv(Timeout, From, MqSState) ->
-	case zmq_socket_fsm:check(recv, MqSState) of
+	case ezmq_socket_fsm:check(recv, MqSState) of
 		{error, Reason} ->
 			{reply, {error, Reason}, MqSState};
 		ok ->
@@ -435,14 +435,14 @@ handle_recv_2(Timeout, From, 0, State) ->
 			  infinity -> none;
 			  _ -> erlang:send_after(Timeout, self(), recv_timeout)
 		  end,
-	State1 = State#zmq_socket{pending_recv = {From, Ref}},
+	State1 = State#ezmq_socket{pending_recv = {From, Ref}},
 	{noreply, State1};
 
 handle_recv_2(_Timeout, _From, _, State) ->
 	case dequeue(State) of
 		{{Transport, Msg}, State0} ->
-			State2 = zmq_socket_fsm:do({deliver, Transport}, State0),
-			{reply, {ok, zmq_socket_fsm:decap_msg({Transport, Msg}, State)}, State2};
+			State2 = ezmq_socket_fsm:do({deliver, Transport}, State0),
+			{reply, {ok, ezmq_socket_fsm:decap_msg({Transport, Msg}, State)}, State2};
 		_ ->
 			{reply, {error, internal}, State}
 	end.
@@ -452,39 +452,39 @@ simple_encap_msg(Msg) when is_list(Msg) ->
 simple_decap_msg(Msg) when is_list(Msg) ->
 	lists:reverse(lists:foldl(fun({normal, M}, Acc) -> [M|Acc]; (_, Acc) -> Acc end, [], Msg)).
 					   
-zmq_link_send({Transports, Msg}, State)
+ezmq_link_send({Transports, Msg}, State)
   when is_list(Transports) ->
 	lists:foreach(fun(T) ->
-						  Msg1 = zmq_socket_fsm:encap_msg({T, Msg}, State),
-						  zmq_link:send(T, Msg1)
+						  Msg1 = ezmq_socket_fsm:encap_msg({T, Msg}, State),
+						  ezmq_link:send(T, Msg1)
 				  end, Transports);
-zmq_link_send({Transport, Msg}, State) ->
-	zmq_link:send(Transport, zmq_socket_fsm:encap_msg({Transport, Msg}, State)).
+ezmq_link_send({Transport, Msg}, State) ->
+	ezmq_link:send(Transport, ezmq_socket_fsm:encap_msg({Transport, Msg}, State)).
 
 %%
 %% round robin queue
 %%
 
-queue_size(#zmq_socket{recv_q = Q}) ->
+queue_size(#ezmq_socket{recv_q = Q}) ->
 	orddict:size(Q).
 
-queue({Transport, Msg}, MqSState = #zmq_socket{recv_q = Q}) ->
+queue({Transport, Msg}, MqSState = #ezmq_socket{recv_q = Q}) ->
 	Q1 = orddict:update(Transport, fun(V) -> queue:in(Msg, V) end,
 						queue:from_list([Msg]), Q),
-	MqSState1 = MqSState#zmq_socket{recv_q = Q1},
-	zmq_socket_fsm:do({queue, Transport}, MqSState1).
+	MqSState1 = MqSState#ezmq_socket{recv_q = Q1},
+	ezmq_socket_fsm:do({queue, Transport}, MqSState1).
 
-queue_close(Transport, MqSState = #zmq_socket{recv_q = Q}) ->
+queue_close(Transport, MqSState = #ezmq_socket{recv_q = Q}) ->
 	Q1 = orddict:erase(Transport, Q),
-	MqSState#zmq_socket{recv_q = Q1}.
+	MqSState#ezmq_socket{recv_q = Q1}.
 	
-dequeue(MqSState = #zmq_socket{recv_q = Q, transports = Transports}) ->
+dequeue(MqSState = #ezmq_socket{recv_q = Q, transports = Transports}) ->
 	?DEBUG("TRANS: ~p, PENDING: ~p~n", [Transports, Q]),
 	case do_dequeue(Transports, Q) of
 		{{Transport, Msg}, Q1} ->
 			Transports1 = lists:delete(Transport, Transports) ++ [Transport],
-			MqSState0 = MqSState#zmq_socket{recv_q = Q1, transports = Transports1},
-			MqSState1 = zmq_socket_fsm:do({dequeue, Transport}, MqSState0),
+			MqSState0 = MqSState#ezmq_socket{recv_q = Q1, transports = Transports1},
+			MqSState1 = ezmq_socket_fsm:do({dequeue, Transport}, MqSState0),
 			{{Transport, Msg}, MqSState1};
 		Reply ->
 			Reply
@@ -506,11 +506,11 @@ do_dequeue([Transport|Rest], Q) ->
 	end.
 
 do_setopts({active, once}, MqSState) ->
-	run_recv_q(MqSState#zmq_socket{mode = active_once});
+	run_recv_q(MqSState#ezmq_socket{mode = active_once});
 do_setopts({active, true}, MqSState) ->
-	run_recv_q(MqSState#zmq_socket{mode = active});
+	run_recv_q(MqSState#ezmq_socket{mode = active});
 do_setopts({active, false}, MqSState) ->
-	MqSState#zmq_socket{mode = passive};
+	MqSState#ezmq_socket{mode = passive};
 
 do_setopts(_, MqSState) ->
 	MqSState.

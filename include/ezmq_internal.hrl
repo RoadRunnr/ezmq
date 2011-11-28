@@ -1,4 +1,4 @@
--record(zmq_socket, {
+-record(ezmq_socket, {
 		  owner      :: pid(),
 		  fsm        :: term(),
 

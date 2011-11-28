@@ -1,9 +1,9 @@
--module(zmq_socket_rep).
+-module(ezmq_socket_rep).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("zmq_internal.hrl").
+-include("ezmq_internal.hrl").
 
 -export([init/1, close/4, encap_msg/4, decap_msg/4]).
 -export([idle/4, pending/4, processing/4]).
@@ -17,7 +17,7 @@
 %%%===================================================================
 
 %%%===================================================================
-%%% zmq_socket callbacks
+%%% ezmq_socket callbacks
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -38,9 +38,9 @@ close(_StateName, _Transport, MqSState, State) ->
 	{next_state, idle, MqSState, State1}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	zmq:simple_encap_msg(Msg).
+	ezmq:simple_encap_msg(Msg).
 decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	zmq:simple_decap_msg(Msg).
+	ezmq:simple_decap_msg(Msg).
 
 idle(check, recv, _MqSState, _State) ->
 	ok;

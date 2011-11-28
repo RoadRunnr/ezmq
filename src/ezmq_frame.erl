@@ -1,4 +1,4 @@
--module(zmq_frame).
+-module(ezmq_frame).
 
 -export([decode/2, encode/1]).
 

@@ -1,11 +1,11 @@
--module(zmq_link).
+-module(ezmq_link).
 
 -behaviour(gen_fsm).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("zmq_debug.hrl").
+-include("ezmq_debug.hrl").
 
 %% API
 -export([start_link/0]).
@@ -61,7 +61,7 @@ start_link() ->
 	gen_fsm:start_link(?MODULE, [], [?FSM_OPTS]).
 
 start_connection() ->
-	zmq_link_sup:start_connection().
+	ezmq_link_sup:start_connection().
 
 accept(MqSocket, Server, Socket) ->
     gen_tcp:controlling_process(Socket, Server),
@@ -128,24 +128,24 @@ setup({connect, MqSocket, Address, Port, TcpOpts, Timeout}, State) ->
 			ok = inet:setopts(Socket, [{active, once}]),
 			{next_state, connecting, NewState, ?CONNECT_TIMEOUT};
 		Reply ->
-			zmq:deliver_connect(MqSocket, Reply),
+			ezmq:deliver_connect(MqSocket, Reply),
 			{stop, normal, State}				
 	end.
 
 connecting(timeout, State = #state{mqsocket = MqSocket}) ->
 	?DEBUG("timeout in connecting~n"),
-	zmq:deliver_connect(MqSocket, {error, timeout}),
+	ezmq:deliver_connect(MqSocket, {error, timeout}),
 	{stop, normal, State};
 
 connecting({in, Frames}, State = #state{mqsocket = MqSocket})
   when length(Frames) == 1 ->
 	?DEBUG("Frames in connecting: ~p~n", [Frames]),
-	zmq:deliver_connect(MqSocket, ok),
+	ezmq:deliver_connect(MqSocket, ok),
 	send_frames([<<>>], {next_state, connected, State});
 
 connecting({in, Frames}, State = #state{mqsocket = MqSocket}) ->
 	?DEBUG("Invalid frames in connecting: ~p~n", [Frames]),
-	zmq:deliver_connect(MqSocket, {error, data}),
+	ezmq:deliver_connect(MqSocket, {error, data}),
 	{stop, normal, State}.
 
 open(timeout, State) ->
@@ -155,7 +155,7 @@ open(timeout, State) ->
 open({in, Frames}, #state{mqsocket = MqSocket} = State)
   when length(Frames) == 1 ->
 	?DEBUG("Frames in open: ~p~n", [Frames]),
-	zmq:deliver_accept(MqSocket),
+	ezmq:deliver_accept(MqSocket),
 	{next_state, connected, State};
 
 open({in, Frames}, State) ->
@@ -168,7 +168,7 @@ connected(timeout, State) ->
 
 connected({in, [Head|Frames]}, #state{mqsocket = MqSocket} = State) ->
 	?DEBUG("in connected Head: ~w, Frames: ~p~n", [Head, Frames]),
-	zmq:deliver_recv(MqSocket, Frames),
+	ezmq:deliver_recv(MqSocket, Frames),
 	{next_state, connected, State};
 
 connected({send, Msg}, State) ->
@@ -264,7 +264,7 @@ handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNex
 	ProcessStateNext;
 
 handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending} = State, ProcessStateNext) ->
-	{Msg, DataRest} = zmq_frame:decode(Ver, Pending),
+	{Msg, DataRest} = ezmq_frame:decode(Ver, Pending),
 	State1 = State#state{pending = DataRest},
 	?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
 
@@ -306,12 +306,12 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 terminate(_Reason, _StateName, #state{mqsocket = MqSocket, socket = Socket})
   when is_port(Socket) ->
 	?DEBUG("terminate"),
-	catch zmq:deliver_close(MqSocket),
+	catch ezmq:deliver_close(MqSocket),
 	gen_tcp:close(Socket),
 	ok;
 terminate(_Reason, _StateName, #state{mqsocket = MqSocket}) ->
 	?DEBUG("terminate"),
-	catch zmq:deliver_close(MqSocket),
+	catch ezmq:deliver_close(MqSocket),
 	ok.
 
 %%--------------------------------------------------------------------
@@ -337,7 +337,7 @@ send_frames(Frames, NextStateInfo) ->
 	State = element(3, NextStateInfo),
 	Socket = State#state.socket,
 
-	Packet = zmq_frame:encode(Frames),
+	Packet = ezmq_frame:encode(Frames),
 	case gen_tcp:send(Socket, Packet) of
 		ok ->
 			ok = inet:setopts(Socket, [{active, once}]),

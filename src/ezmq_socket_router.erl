@@ -1,9 +1,9 @@
--module(zmq_socket_router).
+-module(ezmq_socket_router).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("zmq_internal.hrl").
+-include("ezmq_internal.hrl").
 
 -export([init/1, close/4, encap_msg/4, decap_msg/4]).
 -export([idle/4]).
@@ -16,7 +16,7 @@
 %%%===================================================================
 
 %%%===================================================================
-%%% zmq_socket callbacks
+%%% ezmq_socket callbacks
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -36,13 +36,13 @@ close(_StateName, _Transport, MqSState, State) ->
 	{next_state, idle, MqSState, State}.
 
 encap_msg({_Transport, {_Identity, Msg}}, _StateName, _MqSState, _State) ->
-	zmq:simple_encap_msg(Msg).
+	ezmq:simple_encap_msg(Msg).
 decap_msg({Transport, Msg}, _StateName, _MqSState, _State) ->
-	{Transport, zmq:simple_decap_msg(Msg)}.
+	{Transport, ezmq:simple_decap_msg(Msg)}.
 
-idle(check, {send, _Msg}, #zmq_socket{transports = []}, _State) ->
+idle(check, {send, _Msg}, #ezmq_socket{transports = []}, _State) ->
 	{drop, not_connected};
-idle(check, {send, {Identity, _Msg}}, #zmq_socket{transports = Transports}, _State) ->
+idle(check, {send, {Identity, _Msg}}, #ezmq_socket{transports = Transports}, _State) ->
 	case lists:member(Identity, Transports) of
 		true ->
 			{ok, Identity};
@@ -61,7 +61,7 @@ idle(check, _, _MqSState, _State) ->
 idle(do, queue_send, MqSState, State) ->
 	{next_state, idle, MqSState, State};
 idle(do, {deliver_send, Transport}, MqSState, State) ->
-	MqSState1 = zmq:lb(Transport, MqSState),
+	MqSState1 = ezmq:lb(Transport, MqSState),
 	{next_state, idle, MqSState1, State};
 idle(do, {deliver, _Transport}, MqSState, State) ->
 	{next_state, idle, MqSState, State};
