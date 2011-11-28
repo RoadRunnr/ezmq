@@ -1,1 +1,1 @@
-{incl_mods, [zmq, zmq_socket_fsm, zmq_socket_req, zmq_socket_rep, zmq_socket_dealer, zmq_link, zmq_frame]}.
+{incl_mods, [zmq, zmq_socket_fsm, zmq_socket_req, zmq_socket_rep, zmq_socket_dealer, zmq_socket_router, zmq_link, zmq_frame]}.

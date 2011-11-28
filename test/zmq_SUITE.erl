@@ -243,6 +243,24 @@ basic_tests_dealer(_Config) ->
 	basic_test_dealer_req({127,0,0,1}, 5559, 10, passive, 3),
 	basic_test_dealer_rep({127,0,0,1}, 5560, 10, passive, 3).
 
+basic_test_router_req(IP, Port, Cnt2, Mode, Size) ->
+    {S1, S2} = create_bound_pair_multi(router, req, Cnt2, Mode, IP, Port),
+	Msg = list_to_binary(string:chars($X, Size)),
+
+	%% send a message for each client Socket and expect a result on each socket
+	lists:foreach(fun(S) -> ok = zmq:send(S, [Msg]) end, S2),
+	lists:foreach(fun(_S) ->
+						  {ok, {Id, [Msg]}} = zmq:recv(S1),
+						  ok = zmq:send(S1, {Id, [Msg]})
+				  end, S2),
+	lists:foreach(fun(S) -> {ok, [Msg]} = zmq:recv(S) end, S2),
+
+    ok = zmq:close(S1),
+	lists:foreach(fun(S) -> ok = zmq:close(S) end, S2).
+
+basic_tests_router(_Config) ->
+	basic_test_router_req({127,0,0,1}, 5561, 10, passive, 3).
+
 shutdown_stress_test(_Config) ->
     shutdown_stress_loop(10).
 
@@ -360,7 +378,7 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
 	Config.
 
-all() -> 
+all() ->
 	[reqrep_tcp_test_active, reqrep_tcp_test_passive,
 	 reqrep_tcp_large_active, reqrep_tcp_large_passive,
 	 shutdown_no_blocking_test,
@@ -369,4 +387,5 @@ all() ->
 	 rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
 	 req_tcp_fragment,
 	 dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout, basic_tests_dealer,
+	 basic_tests_router,
 	 shutdown_stress_test].

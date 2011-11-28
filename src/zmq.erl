@@ -59,6 +59,9 @@ close(Socket) ->
 	gen_server:call(Socket, close).
 
 send(Socket, Msg) when is_pid(Socket), is_list(Msg) ->
+	gen_server:call(Socket, {send, Msg}, infinity);
+
+send(Socket, Msg = {Identity, Parts}) when is_pid(Socket), is_pid(Identity), is_list(Parts) ->
 	gen_server:call(Socket, {send, Msg}, infinity).
 
 recv(Socket) ->

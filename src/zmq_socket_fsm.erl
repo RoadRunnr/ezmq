@@ -57,9 +57,16 @@ close(Transport, MqSState = #zmq_socket{fsm = Fsm}) ->
 			NextMqSState#zmq_socket{fsm = NewFsm}
 	end.
 
-encap_msg({Transport, Msg}, MqSState = #zmq_socket{fsm = Fsm}) when is_pid(Transport), is_list(Msg) ->
+encap_msg({Transport, Msg}, MqSState = #zmq_socket{fsm = Fsm})
+  when is_pid(Transport), is_list(Msg) ->
+	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
+	 Module:encap_msg({Transport, Msg}, StateName, MqSState, State);
+encap_msg({Transport, Msg = {Identity, Parts}}, MqSState = #zmq_socket{fsm = Fsm})
+  when is_pid(Transport), is_pid(Identity), is_list(Parts) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:encap_msg({Transport, Msg}, StateName, MqSState, State).
-decap_msg({Transport, Msg}, MqSState = #zmq_socket{fsm = Fsm}) when is_pid(Transport), is_list(Msg) ->
+
+decap_msg({Transport, Msg}, MqSState = #zmq_socket{fsm = Fsm})
+  when is_pid(Transport), is_list(Msg) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:decap_msg({Transport, Msg}, StateName, MqSState, State).
