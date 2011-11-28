@@ -1,49 +1,28 @@
+% Copyright 2010-2011, Travelping GmbH <info@travelping.com>
+
+% Permission is hereby granted, free of charge, to any person obtaining a
+% copy of this software and associated documentation files (the "Software"),
+% to deal in the Software without restriction, including without limitation
+% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+% and/or sell copies of the Software, and to permit persons to whom the
+% Software is furnished to do so, subject to the following conditions:
+
+% The above copyright notice and this permission notice shall be included in
+% all copies or substantial portions of the Software.
+
+% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+% DEALINGS IN THE SOFTWARE.
+
 -module(ezmq_SUITE).
 
 -compile(export_all).
 
 -include_lib("common_test/include/ct.hrl").
-
-%% hwm_test() ->
-%%     {ok, C} = ezmq:context(),
-%%     {ok, S1} = ezmq:socket(C, [pull, {active, false}]),
-%%     {ok, S2} = ezmq:socket(C, [push, {active, false}]),
-
-%%     ok = ezmq:setsockopt(S2, linger, 0),
-%%     ok = ezmq:setsockopt(S2, hwm, 5),
-
-%%     ok = ezmq:bind(S1, "tcp://127.0.0.1:5858"),
-%%     ok = ezmq:connect(S2, "tcp://127.0.0.1:5858"),
-
-%%     ok = hwm_loop(10, S2),
-
-%%     ?assertMatch({ok, <<"test">>}, ezmq:recv(S1)),
-%%     ?assertMatch(ok, ezmq:send(S2, <<"test">>)),
-%%     ok = ezmq:close(S1),
-%%     ok = ezmq:close(S2),
-%%     ok = ezmq:term(C).
-
-%% hwm_loop(0, _S) ->
-%%     ok;
-%% hwm_loop(N, S) when N > 5 ->
-%%     ?assertMatch(ok, ezmq:send(S, <<"test">>, [noblock])),
-%%     hwm_loop(N-1, S);
-%% hwm_loop(N, S) ->
-%%     ?assertMatch({error, _} ,ezmq:send(S, <<"test">>, [noblock])),
-%%     hwm_loop(N-1, S).
-
-
-%% pair_ipc_test() ->
-%%     basic_tests("ipc:///tmp/tester", pair, pair, active),
-%%     basic_tests("ipc:///tmp/tester", pair, pair, passive).
-
-%% pair_tcp_test() ->
-%%     basic_tests("tcp://127.0.0.1:5554", pair, pair, active),
-%%     basic_tests("tcp://127.0.0.1:5555", pair, pair, passive).
-
-%% reqrep_ipc_test() ->
-%%     basic_tests("ipc:///tmp/tester", req, rep, active),
-%%     basic_tests("ipc:///tmp/tester", req, rep, passive).
 
 reqrep_tcp_test_active(_Config) ->
     basic_tests({127,0,0,1}, 5556, req, rep, active, 3).
@@ -379,13 +358,13 @@ end_per_suite(Config) ->
 	Config.
 
 all() ->
-	[reqrep_tcp_test_active, reqrep_tcp_test_passive,
-	 reqrep_tcp_large_active, reqrep_tcp_large_passive,
-	 shutdown_no_blocking_test,
-	 req_tcp_bind_close, req_tcp_connect_close, req_tcp_connect_timeout,
-	 req_tcp_connecting_timeout, req_tcp_connecting_trash,
-	 rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
-	 req_tcp_fragment,
-	 dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout, basic_tests_dealer,
-	 basic_tests_router,
-	 shutdown_stress_test].
+    [reqrep_tcp_test_active, reqrep_tcp_test_passive,
+     reqrep_tcp_large_active, reqrep_tcp_large_passive,
+     shutdown_no_blocking_test,
+     req_tcp_bind_close, req_tcp_connect_close, req_tcp_connect_timeout,
+     req_tcp_connecting_timeout, req_tcp_connecting_trash,
+     rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
+     req_tcp_fragment,
+     dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout, basic_tests_dealer,
+     basic_tests_router,
+     shutdown_stress_test].
