@@ -240,6 +240,20 @@ basic_test_router_req(IP, Port, Cnt2, Mode, Size) ->
 basic_tests_router(_Config) ->
 	basic_test_router_req({127,0,0,1}, 5561, 10, passive, 3).
 
+basic_test_pub_sub(IP, Port, Cnt2, Mode, Size) ->
+    {S1, S2} = create_bound_pair_multi(pub, sub, Cnt2, Mode, IP, Port),
+	Msg = list_to_binary(string:chars($X, Size)),
+
+	%% send a message for each client and expect a result on each socket
+	{error, fsm} = ezmq:recv(S1),
+	ok = ezmq:send(S1, [Msg]),
+	lists:foreach(fun(S) -> {ok, [Msg]} = ezmq:recv(S) end, S2),
+    ok = ezmq:close(S1),
+	lists:foreach(fun(S) -> ok = ezmq:close(S) end, S2).
+
+basic_tests_pub_sub(_Config) ->
+	basic_test_pub_sub({127,0,0,1}, 5561, 10, passive, 3).
+
 shutdown_stress_test(_Config) ->
     shutdown_stress_loop(10).
 
@@ -365,6 +379,7 @@ all() ->
      req_tcp_connecting_timeout, req_tcp_connecting_trash,
      rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
      req_tcp_fragment,
-     dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout, basic_tests_dealer,
-     basic_tests_router,
+     dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout,
+	 basic_tests_dealer, basic_tests_router,
+	 basic_tests_pub_sub,
      shutdown_stress_test].

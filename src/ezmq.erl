@@ -135,7 +135,9 @@ lb(Transport, MqSState = #ezmq_socket{transports = Trans}) ->
 %% @end
 %%--------------------------------------------------------------------
 socket_types(Type) ->
-	SupMod = [{req, ezmq_socket_req}, {rep, ezmq_socket_rep}, {dealer, ezmq_socket_dealer}, {router, ezmq_socket_router}],
+	SupMod = [{req, ezmq_socket_req}, {rep, ezmq_socket_rep},
+			  {dealer, ezmq_socket_dealer}, {router, ezmq_socket_router},
+			  {pub, ezmq_socket_pub}, {sub, ezmq_socket_sub}],
 	proplists:get_value(Type, SupMod).
 			
 init({Owner, Opts}) ->

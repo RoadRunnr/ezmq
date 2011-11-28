@@ -1,1 +1,5 @@
-{incl_mods, [ezmq, ezmq_socket_fsm, ezmq_socket_req, ezmq_socket_rep, ezmq_socket_dealer, ezmq_socket_router, ezmq_link, ezmq_frame]}.
+{incl_mods, [ezmq, ezmq_socket_fsm,
+	     ezmq_socket_req, ezmq_socket_rep,
+	     ezmq_socket_dealer, ezmq_socket_router,
+	     ezmq_socket_pub, ezmq_socket_sub,
+	     ezmq_link, ezmq_frame]}.
