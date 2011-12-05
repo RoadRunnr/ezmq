@@ -5,16 +5,16 @@
 main() ->
 	application:start(sasl),
 	application:start(gen_listener_tcp),
-	application:start(ezmq),
+	application:start(gen_zmq),
 	Opts = [{ip,{127,0,0,1}}],
 	Port = 5555,
 
-	{ok, Socket} = ezmq:start([{type, rep}]),
-	ezmq:bind(Socket, Port, Opts),
+	{ok, Socket} = gen_zmq:start([{type, rep}]),
+	gen_zmq:bind(Socket, Port, Opts),
 	loop(Socket).
 
 loop(Socket) ->
-	ezmq:recv(Socket),
+	gen_zmq:recv(Socket),
 	io:format("Received Hello~n"),
-	ezmq:send(Socket, [{normal,<<"World">>}]),
+	gen_zmq:send(Socket, [{normal,<<"World">>}]),
 	loop(Socket).

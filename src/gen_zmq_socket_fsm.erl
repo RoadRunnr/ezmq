@@ -18,13 +18,13 @@
 % FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 % DEALINGS IN THE SOFTWARE.
 
--module(ezmq_socket_fsm).
+-module(gen_zmq_socket_fsm).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("ezmq_debug.hrl").
--include("ezmq_internal.hrl").
+-include("gen_zmq_debug.hrl").
+-include("gen_zmq_internal.hrl").
 
 -export([init/3, check/2, do/2, close/2, encap_msg/2, decap_msg/2]).
 
@@ -41,52 +41,52 @@
 init(Module, Opts, MqSState) ->
 	case Module:init(Opts) of
 		{ok, StateName, State} ->
-			{ok, MqSState#ezmq_socket{fsm = #fsm_state{module = Module, state_name = StateName, state = State}}};
+			{ok, MqSState#gen_zmq_socket{fsm = #fsm_state{module = Module, state_name = StateName, state = State}}};
 		Reply ->
 			{Reply, MqSState}
 	end.
 
 %% check actions do not alter the state of the FSM
-check(Action, MqSState = #ezmq_socket{fsm = Fsm}) ->
+check(Action, MqSState = #gen_zmq_socket{fsm = Fsm}) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	R = Module:StateName(check, Action, MqSState, State),
-	?DEBUG("ezmq_socket_fsm state: ~w, check: ~w, Result: ~w~n", [StateName, Action, R]),
+	?DEBUG("gen_zmq_socket_fsm state: ~w, check: ~w, Result: ~w~n", [StateName, Action, R]),
 	R.
 
-do(Action, MqSState = #ezmq_socket{fsm = Fsm}) ->
+do(Action, MqSState = #gen_zmq_socket{fsm = Fsm}) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	case Module:StateName(do, Action, MqSState, State) of
 		{error, Reason} ->
 			error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Action, Reason, MqSState, State]),
 			error(Reason);
 		{next_state, NextStateName, NextMqSState, NextState} ->
-			?DEBUG("ezmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w~n", [StateName, Action, NextStateName]),
+			?DEBUG("gen_zmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w~n", [StateName, Action, NextStateName]),
 			NewFsm = Fsm#fsm_state{state_name = NextStateName, state = NextState},
-			NextMqSState#ezmq_socket{fsm = NewFsm}
+			NextMqSState#gen_zmq_socket{fsm = NewFsm}
 	end.
 
-close(Transport, MqSState = #ezmq_socket{fsm = Fsm}) ->
+close(Transport, MqSState = #gen_zmq_socket{fsm = Fsm}) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	case Module:close(StateName, Transport, MqSState, State) of
 		{error, Reason} ->
 			error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Transport, Reason, MqSState, State]),
 			error(Reason);
 		{next_state, NextStateName, NextMqSState, NextState} ->
-			?DEBUG("ezmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w~n", [StateName, Transport, NextStateName]),
+			?DEBUG("gen_zmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w~n", [StateName, Transport, NextStateName]),
 			NewFsm = Fsm#fsm_state{state_name = NextStateName, state = NextState},
-			NextMqSState#ezmq_socket{fsm = NewFsm}
+			NextMqSState#gen_zmq_socket{fsm = NewFsm}
 	end.
 
-encap_msg({Transport, Msg}, MqSState = #ezmq_socket{fsm = Fsm})
+encap_msg({Transport, Msg}, MqSState = #gen_zmq_socket{fsm = Fsm})
   when is_pid(Transport), is_list(Msg) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:encap_msg({Transport, Msg}, StateName, MqSState, State);
-encap_msg({Transport, Msg = {Identity, Parts}}, MqSState = #ezmq_socket{fsm = Fsm})
+encap_msg({Transport, Msg = {Identity, Parts}}, MqSState = #gen_zmq_socket{fsm = Fsm})
   when is_pid(Transport), is_pid(Identity), is_list(Parts) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:encap_msg({Transport, Msg}, StateName, MqSState, State).
 
-decap_msg({Transport, Msg}, MqSState = #ezmq_socket{fsm = Fsm})
+decap_msg({Transport, Msg}, MqSState = #gen_zmq_socket{fsm = Fsm})
   when is_pid(Transport), is_list(Msg) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:decap_msg({Transport, Msg}, StateName, MqSState, State).

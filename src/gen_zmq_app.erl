@@ -18,7 +18,7 @@
 % FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 % DEALINGS IN THE SOFTWARE.
 
--module(ezmq_app).
+-module(gen_zmq_app).
 
 -behaviour(application).
 
@@ -30,7 +30,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    ezmq_sup:start_link().
+    gen_zmq_sup:start_link().
 
 stop(_State) ->
     ok.

@@ -18,35 +18,19 @@
 % FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 % DEALINGS IN THE SOFTWARE.
 
--module(ezmq_link_sup).
+-record(gen_zmq_socket, {
+		  owner      :: pid(),
+		  fsm        :: term(),
 
--behaviour(supervisor).
+		  %% delivery mechanism
+		  mode = passive         :: 'active'|'active_once'|'passive',
+		  recv_q = [],                                 %% the queue of all recieved messages, that are blocked by a send op
+		  pending_recv = none    :: tuple()|'none',
+		  send_q = [],                                 %% the queue of all messages to send
+		  pending_send = none    :: tuple()|'none',
 
-%% API
--export([start_link/0]).
--export([start_connection/0, datapaths/0]).
-
-%% Supervisor callbacks
--export([init/1]).
-
-%% ===================================================================
-%% API functions
-%% ===================================================================
-
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-start_connection() ->
-	supervisor:start_child(?MODULE, []).
-
-datapaths() ->
-	lists:map(fun({_, Child, _, _}) -> Child end, supervisor:which_children(?MODULE)).
-
-%% ===================================================================
-%% Supervisor callbacks
-%% ===================================================================
-
-init([]) ->
-	{ok, {{simple_one_for_one, 0, 1},
-          [{ezmq_link, {ezmq_link, start_link, []},
-            temporary, brutal_kill, worker, [ezmq_link]}]}}.
+		  %% all our registered transports
+		  connecting    :: orddict:orddict(),
+		  listen_trans  :: orddict:orddict(),
+		  transports    :: list()
+}).

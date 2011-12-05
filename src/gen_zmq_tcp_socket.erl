@@ -18,10 +18,10 @@
 % FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 % DEALINGS IN THE SOFTWARE.
 
--module(ezmq_tcp_socket).
+-module(gen_zmq_tcp_socket).
 -behaviour(gen_listener_tcp).
 
--include("ezmq_debug.hrl").
+-include("gen_zmq_debug.hrl").
 
 -define(TCP_PORT, 5555).
 -define(TCP_OPTS, [binary, inet,
@@ -63,9 +63,9 @@ init([MqSocket, Port, Opts]) ->
     {ok, {Port, Opts}, MqSocket}.
 
 handle_accept(Sock, State) ->
-	case ezmq_link:start_connection() of
+	case gen_zmq_link:start_connection() of
 		{ok, Pid} ->
-			ezmq_link:accept(State, Pid, Sock);
+			gen_zmq_link:accept(State, Pid, Sock);
 		_ ->
 			error_logger:error_report([{event, accept_failed}]),
 			gen_tcp:close(Sock)
@@ -82,7 +82,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, _State) ->
-	?DEBUG("ezmq_tcp_socket terminate on ~p", [Reason]),
+	?DEBUG("gen_zmq_tcp_socket terminate on ~p", [Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

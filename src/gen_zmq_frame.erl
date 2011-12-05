@@ -18,7 +18,7 @@
 % FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 % DEALINGS IN THE SOFTWARE.
 
--module(ezmq_frame).
+-module(gen_zmq_frame).
 
 -export([decode/2, encode/1]).
 

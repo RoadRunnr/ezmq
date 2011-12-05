@@ -18,19 +18,32 @@
 % FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 % DEALINGS IN THE SOFTWARE.
 
--record(ezmq_socket, {
-		  owner      :: pid(),
-		  fsm        :: term(),
+-module(gen_zmq_sup).
 
-		  %% delivery mechanism
-		  mode = passive         :: 'active'|'active_once'|'passive',
-		  recv_q = [],                                 %% the queue of all recieved messages, that are blocked by a send op
-		  pending_recv = none    :: tuple()|'none',
-		  send_q = [],                                 %% the queue of all messages to send
-		  pending_send = none    :: tuple()|'none',
+-behaviour(supervisor).
 
-		  %% all our registered transports
-		  connecting    :: orddict:orddict(),
-		  listen_trans  :: orddict:orddict(),
-		  transports    :: list()
-}).
+%% API
+-export([start_link/0]).
+
+%% Supervisor callbacks
+-export([init/1]).
+
+%% Helper macro for declaring children of supervisor
+-define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
+
+%% ===================================================================
+%% API functions
+%% ===================================================================
+
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+%% ===================================================================
+%% Supervisor callbacks
+%% ===================================================================
+
+init([]) ->
+    {ok, {{one_for_one, 5, 10}, [
+								 ?CHILD(gen_zmq_link_sup, supervisor)
+								]} }.
+
