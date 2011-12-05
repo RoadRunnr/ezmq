@@ -337,19 +337,19 @@ assert_mbox_match(MatchSpec) ->
 
 ping_pong({S1, S2}, Msg, active) ->
     ok = gen_zmq:send(S1, [Msg,Msg]),
-	assert_mbox({gen_zmq, S2, [Msg,Msg]}),
+	assert_mbox({zmq, S2, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
-	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox({zmq, S1, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S1, [Msg]),
-	assert_mbox({gen_zmq, S2, [Msg]}),
+	assert_mbox({zmq, S2, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
- 	assert_mbox({gen_zmq, S1, [Msg]}),
+ 	assert_mbox({zmq, S1, [Msg]}),
 	assert_mbox_empty(),
     ok;
     

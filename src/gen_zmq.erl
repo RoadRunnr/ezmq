@@ -409,7 +409,7 @@ send_owner({Transport, Msg}, #gen_zmq_socket{pending_recv = {From, Ref}} = State
 	gen_zmq_socket_fsm:do({deliver, Transport}, State1);
 send_owner({Transport, Msg}, #gen_zmq_socket{owner = Owner, mode = Mode} = State)
   when Mode == active; Mode == active_once ->
-	Owner ! {gen_zmq, self(), gen_zmq_socket_fsm:decap_msg({Transport, Msg}, State)},
+	Owner ! {zmq, self(), gen_zmq_socket_fsm:decap_msg({Transport, Msg}, State)},
 	NewState = gen_zmq_socket_fsm:do({deliver, Transport}, State),
 	next_mode(NewState).
 

@@ -112,14 +112,14 @@ assert_mbox_match(MatchSpec) ->
 ping_pong_erlzmq({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-	assert_mbox({gen_zmq, S2, [Msg,Msg]}),
+	assert_mbox({zmq, S2, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
 	assert_mbox({zmq, S1, Msg, []}),
 
     ok = erlzmq:send(S1, Msg),
-	assert_mbox({gen_zmq, S2, [Msg]}),
+	assert_mbox({zmq, S2, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
@@ -145,7 +145,7 @@ ping_pong_gen_zmq({S1, S2}, Msg, active) ->
 	assert_mbox_empty(),
 
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox({zmq, S1, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S1, [Msg]),
@@ -154,7 +154,7 @@ ping_pong_gen_zmq({S1, S2}, Msg, active) ->
 
     ok = erlzmq:send(S2, Msg, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg,Msg]}),
+	assert_mbox({zmq, S1, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok;
@@ -172,14 +172,14 @@ ping_pong_gen_zmq({S1, S2}, Msg, passive) ->
 ping_pong_erlzmq_dealer({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-	assert_mbox({gen_zmq, S2, [Msg,Msg]}),
+	assert_mbox({zmq, S2, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
 	assert_mbox({zmq, S1, Msg, []}),
 
     ok = erlzmq:send(S1, Msg),
-	assert_mbox({gen_zmq, S2, [Msg]}),
+	assert_mbox({zmq, S2, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
@@ -207,7 +207,7 @@ ping_pong_gen_zmq_dealer({S1, S2}, Msg, active) ->
 
     ok = erlzmq:send(S2, <<>>, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox({zmq, S1, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S1, [Msg]),
@@ -218,7 +218,7 @@ ping_pong_gen_zmq_dealer({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S2, <<>>, [sndmore]),
     ok = erlzmq:send(S2, Msg, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg,Msg]}),
+	assert_mbox({zmq, S1, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok;
@@ -241,7 +241,7 @@ dealer_ping_pong_erlzmq({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
 
-	assert_mbox({gen_zmq, S2, [Msg,Msg]}),
+	assert_mbox({zmq, S2, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
@@ -251,7 +251,7 @@ dealer_ping_pong_erlzmq({S1, S2}, Msg, active) ->
 
     ok = erlzmq:send(S1, <<>>, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-	assert_mbox({gen_zmq, S2, [Msg]}),
+	assert_mbox({zmq, S2, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, [Msg]),
@@ -291,7 +291,7 @@ dealer_ping_pong_gen_zmq({S1, S2}, Msg, active) ->
 	assert_mbox_empty(),
 
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox({zmq, S1, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S1, [Msg]),
@@ -299,7 +299,7 @@ dealer_ping_pong_gen_zmq({S1, S2}, Msg, active) ->
 	assert_mbox_empty(),
 
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox({zmq, S1, [Msg]}),
     ok;
     
 dealer_ping_pong_gen_zmq({S1, S2}, Msg, passive) ->
@@ -315,8 +315,8 @@ dealer_ping_pong_gen_zmq({S1, S2}, Msg, passive) ->
 ping_pong_erlzmq_router({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-	%% {gen_zmq, S2, {Id,[Msg,Msg]}} = 
-	Id = assert_mbox_match({{gen_zmq, S2, {'$1',[Msg,Msg]}},[], ['$1']}),
+	%% {zmq, S2, {Id,[Msg,Msg]}} = 
+	Id = assert_mbox_match({{zmq, S2, {'$1',[Msg,Msg]}},[], ['$1']}),
 	io:format("Id: ~w~n", [Id]),
 	assert_mbox_empty(),
 
@@ -325,7 +325,7 @@ ping_pong_erlzmq_router({S1, S2}, Msg, active) ->
 	assert_mbox_empty(),
 
     ok = erlzmq:send(S1, Msg),
-	assert_mbox({gen_zmq, S2, {Id, [Msg]}}),
+	assert_mbox({zmq, S2, {Id, [Msg]}}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S2, {Id, [Msg]}),
@@ -355,7 +355,7 @@ ping_pong_gen_zmq_router({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S2, Id, [sndmore]),
     ok = erlzmq:send(S2, <<>>, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox({zmq, S1, [Msg]}),
 	assert_mbox_empty(),
 
     ok = gen_zmq:send(S1, [Msg]),
@@ -368,7 +368,7 @@ ping_pong_gen_zmq_router({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S2, <<>>, [sndmore]),
     ok = erlzmq:send(S2, Msg, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-	assert_mbox({gen_zmq, S1, [Msg,Msg]}),
+	assert_mbox({zmq, S1, [Msg,Msg]}),
 	assert_mbox_empty(),
 
     ok;
