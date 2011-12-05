@@ -240,6 +240,24 @@ basic_test_router_req(IP, Port, Cnt2, Mode, Size) ->
 basic_tests_router(_Config) ->
 	basic_test_router_req({127,0,0,1}, 5561, 10, passive, 3).
 
+basic_test_rep_req(IP, Port, Cnt2, Mode, Size) ->
+    {S1, S2} = create_bound_pair_multi(rep, req, Cnt2, Mode, IP, Port),
+	Msg = list_to_binary(string:chars($X, Size)),
+
+	%% send a message for each client Socket and expect a result on each socket
+	lists:foreach(fun(S) -> ok = gen_zmq:send(S, [Msg]) end, S2),
+	lists:foreach(fun(_S) ->
+						  {ok, [Msg]} = gen_zmq:recv(S1),
+						  ok = gen_zmq:send(S1, [Msg])
+				  end, S2),
+	lists:foreach(fun(S) -> {ok, [Msg]} = gen_zmq:recv(S) end, S2),
+
+    ok = gen_zmq:close(S1),
+	lists:foreach(fun(S) -> ok = gen_zmq:close(S) end, S2).
+
+basic_tests_rep_req(_Config) ->
+	basic_test_rep_req({127,0,0,1}, 5561, 10, passive, 3).
+
 basic_test_pub_sub(IP, Port, Cnt2, Mode, Size) ->
     {S1, S2} = create_bound_pair_multi(pub, sub, Cnt2, Mode, IP, Port),
 	Msg = list_to_binary(string:chars($X, Size)),
@@ -387,6 +405,6 @@ all() ->
      rep_tcp_connecting_timeout, rep_tcp_connecting_trash,
      req_tcp_fragment,
      dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout,
-	 basic_tests_dealer, basic_tests_router,
+	 basic_tests_rep_req, basic_tests_dealer, basic_tests_router,
 	 basic_tests_pub_sub,
      shutdown_stress_test].

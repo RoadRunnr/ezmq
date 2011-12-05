@@ -73,6 +73,8 @@ idle(check, _, _MqSState, _State) ->
 
 idle(do, {queue, _Transport}, MqSState, State) ->
 	{next_state, pending, MqSState, State};
+idle(do, {dequeue, _Transport}, MqSState, State) ->
+	{next_state, pending, MqSState, State};
 idle(do, {deliver, Transport}, MqSState, State) ->
 	State1 = State#state{last_recv = Transport},
 	{next_state, processing, MqSState, State1};
@@ -98,6 +100,8 @@ pending(do, {deliver, Transport}, MqSState, State) ->
 pending(do, _, _MqSState, _State) ->
 	{error, fsm}.
 
+processing(check, {deliver_recv, _Transport}, _MqSState, _State) ->
+	queue;
 processing(check, {send, _Msg}, _MqSState, #state{last_recv = Transport}) ->
 	{ok, Transport};
 processing(check, _, _MqSState, _State) ->
@@ -106,6 +110,8 @@ processing(check, _, _MqSState, _State) ->
 processing(do, {deliver_send, _Transport}, MqSState, State) ->
 	State1 = State#state{last_recv = none},
 	{next_state, idle, MqSState, State1};
+processing(do, {queue, _Transport}, MqSState, State) ->
+	{next_state, prossing, MqSState, State};
 
 processing(do, _, _MqSState, _State) ->
 	{error, fsm}.
