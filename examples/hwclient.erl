@@ -15,7 +15,7 @@ loop(_Socket, 10) ->
 	ok;
 loop(Socket, N) ->
 	io:format("Sending Hello ~w ...~n",[N]),
-	gen_zmq:send(Socket, [{normal,<<"Hello",0>>}]),
-	gen_zmq:recv(Socket),
-	io:format("Received World ~w~n", [N]),
+	gen_zmq:send(Socket, [<<"Hello",0>>]),
+	{ok, R} = gen_zmq:recv(Socket),
+	io:format("Received '~s' ~w~n", [R, N]),
 	loop(Socket, N+1).

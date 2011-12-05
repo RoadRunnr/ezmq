@@ -16,5 +16,5 @@ main() ->
 loop(Socket) ->
 	gen_zmq:recv(Socket),
 	io:format("Received Hello~n"),
-	gen_zmq:send(Socket, [{normal,<<"World">>}]),
+	gen_zmq:send(Socket, [<<"World">>]),
 	loop(Socket).
