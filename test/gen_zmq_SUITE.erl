@@ -311,39 +311,46 @@ create_bound_pair(Type1, Type2, Mode, IP, Port) ->
     ok = gen_zmq:connect(S2, IP, Port, []),
     {S1, S2}.
 
+%% assert that message queue is empty....
+assert_mbox_empty() ->
+	receive
+		M -> ct:fail({unexpected, M})
+	after
+		0 -> ok
+	end.
+
+%% assert that top message in the queue is what we think it should be
+assert_mbox(Msg) ->
+	assert_mbox_match({Msg,[],[ok]}).
+
+assert_mbox_match(MatchSpec) ->
+	CompiledMatchSpec = ets:match_spec_compile([MatchSpec]),
+    receive
+		M -> case ets:match_spec_run([M], CompiledMatchSpec) of
+				 [] -> ct:fail({unexpected, M});
+				 [Ret] -> Ret
+			 end
+    after
+        1000 ->
+            ct:fail(timeout)
+    end.
+
 ping_pong({S1, S2}, Msg, active) ->
     ok = gen_zmq:send(S1, [Msg,Msg]),
-    receive
-        {gen_zmq, S2, [Msg,Msg]} ->
-            ok
-    after
-        1000 ->
-            ct:fail(timeout)
-    end,
+	assert_mbox({gen_zmq, S2, [Msg,Msg]}),
+	assert_mbox_empty(),
+
     ok = gen_zmq:send(S2, [Msg]),
-    receive
-        {gen_zmq, S1, [Msg]} ->
-            ok
-    after
-        1000 ->
-            ct:fail(timeout)
-    end,
+	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox_empty(),
+
     ok = gen_zmq:send(S1, [Msg]),
-    receive
-        {gen_zmq, S2, [Msg]} ->
-            ok
-    after
-        1000 ->
-            ct:fail(timeout)
-    end,
+	assert_mbox({gen_zmq, S2, [Msg]}),
+	assert_mbox_empty(),
+
     ok = gen_zmq:send(S2, [Msg]),
-    receive
-        {gen_zmq, S1, [Msg]} ->
-            ok
-    after
-        1000 ->
-            ct:fail(timeout)
-    end,
+ 	assert_mbox({gen_zmq, S1, [Msg]}),
+	assert_mbox_empty(),
     ok;
     
 ping_pong({S1, S2}, Msg, passive) ->
