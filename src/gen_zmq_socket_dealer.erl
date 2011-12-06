@@ -25,7 +25,7 @@
 %% --------------------------------------------------------------------
 -include("gen_zmq_internal.hrl").
 
--export([init/1, close/4, encap_msg/4, decap_msg/4]).
+-export([init/1, close/4, encap_msg/4, decap_msg/5]).
 -export([idle/4]).
 
 -record(state, {
@@ -57,7 +57,7 @@ close(_StateName, _Transport, MqSState, State) ->
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
 	gen_zmq:simple_encap_msg(Msg).
-decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
 	gen_zmq:simple_decap_msg(Msg).
 
 idle(check, {send, _Msg}, #gen_zmq_socket{transports = []}, _State) ->

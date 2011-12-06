@@ -25,7 +25,7 @@
 %% --------------------------------------------------------------------
 -include("gen_zmq_internal.hrl").
 
--export([init/1, close/4, encap_msg/4, decap_msg/4]).
+-export([init/1, close/4, encap_msg/4, decap_msg/5]).
 -export([idle/4, pending/4, processing/4]).
 
 -record(state, {
@@ -59,7 +59,7 @@ close(_StateName, _Transport, MqSState, State) ->
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
 	gen_zmq:simple_encap_msg(Msg).
-decap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
+decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
 	gen_zmq:simple_decap_msg(Msg).
 
 idle(check, recv, _MqSState, _State) ->
@@ -101,6 +101,8 @@ pending(do, _, _MqSState, _State) ->
 	{error, fsm}.
 
 processing(check, {deliver_recv, _Transport}, _MqSState, _State) ->
+	ok;
+processing(check, {deliver, _Transport}, _MqSState, _State) ->
 	queue;
 processing(check, {send, _Msg}, _MqSState, #state{last_recv = Transport}) ->
 	{ok, Transport};
@@ -111,7 +113,7 @@ processing(do, {deliver_send, _Transport}, MqSState, State) ->
 	State1 = State#state{last_recv = none},
 	{next_state, idle, MqSState, State1};
 processing(do, {queue, _Transport}, MqSState, State) ->
-	{next_state, prossing, MqSState, State};
+	{next_state, processing, MqSState, State};
 
 processing(do, _, _MqSState, _State) ->
 	{error, fsm}.

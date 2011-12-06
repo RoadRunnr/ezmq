@@ -29,7 +29,7 @@
 
 %% API
 -export([start_link/0]).
--export([start_connection/0, accept/3, connect/5, close/1]).
+-export([start_connection/0, accept/4, connect/6, close/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -40,6 +40,8 @@
 
 -record(state, {
 		  mqsocket                  :: pid(),
+		  identity = <<>>           :: binary(),
+		  remote_id = <<>>          :: binary(),
 		  socket,
 		  version = 0,
 		  frames = [],
@@ -83,12 +85,12 @@ start_link() ->
 start_connection() ->
 	gen_zmq_link_sup:start_connection().
 
-accept(MqSocket, Server, Socket) ->
+accept(MqSocket, Identity, Server, Socket) ->
     gen_tcp:controlling_process(Socket, Server),
-	gen_fsm:send_event(Server, {accept, MqSocket, Socket}).
+	gen_fsm:send_event(Server, {accept, MqSocket, Identity, Socket}).
 
-connect(Server, Address, Port, TcpOpts, Timeout) ->
-	gen_fsm:send_event(Server, {connect, self(), Address, Port, TcpOpts, Timeout}).
+connect(Identity, Server, Address, Port, TcpOpts, Timeout) ->
+	gen_fsm:send_event(Server, {connect, self(), Identity, Address, Port, TcpOpts, Timeout}).
 
 send(Server, Msg) ->
 	gen_fsm:send_event(Server, {send, Msg}).
@@ -132,19 +134,19 @@ init([]) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
-setup({accept, MqSocket, Socket}, State) ->
+setup({accept, MqSocket, Identity, Socket}, State) ->
 	?DEBUG("got setup~n"),
-	NewState = State#state{mqsocket = MqSocket, socket = Socket},
+	NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
 	?DEBUG("NewState: ~p~n", [NewState]),
-	send_frames([<<>>], {next_state, open, NewState, ?CONNECT_TIMEOUT});
+	send_frames([Identity], {next_state, open, NewState, ?CONNECT_TIMEOUT});
 
-setup({connect, MqSocket, Address, Port, TcpOpts, Timeout}, State) ->
+setup({connect, MqSocket, Identity, Address, Port, TcpOpts, Timeout}, State) ->
 	?DEBUG("got connect: ~w, ~w~n", [Address, Port]),
 
 	%%TODO: socket options
 	case gen_tcp:connect(Address, Port, TcpOpts, Timeout) of
 		{ok, Socket} ->
-			NewState = State#state{mqsocket = MqSocket, socket = Socket},
+			NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
 			ok = inet:setopts(Socket, [{active, once}]),
 			{next_state, connecting, NewState, ?CONNECT_TIMEOUT};
 		Reply ->
@@ -157,11 +159,13 @@ connecting(timeout, State = #state{mqsocket = MqSocket}) ->
 	gen_zmq:deliver_connect(MqSocket, {error, timeout}),
 	{stop, normal, State};
 
-connecting({in, Frames}, State = #state{mqsocket = MqSocket})
+connecting({in, Frames}, State = #state{mqsocket = MqSocket, identity = Identity})
   when length(Frames) == 1 ->
 	?DEBUG("Frames in connecting: ~p~n", [Frames]),
-	gen_zmq:deliver_connect(MqSocket, ok),
-	send_frames([<<>>], {next_state, connected, State});
+	[RemoteId0] = gen_zmq:simple_decap_msg(Frames),
+	RemoteId = gen_zmq:remote_id_assign(RemoteId0),
+	gen_zmq:deliver_connect(MqSocket, {ok, RemoteId}),
+	send_frames([Identity], {next_state, connected, State #state{remote_id = RemoteId}});
 
 connecting({in, Frames}, State = #state{mqsocket = MqSocket}) ->
 	?DEBUG("Invalid frames in connecting: ~p~n", [Frames]),
@@ -175,8 +179,10 @@ open(timeout, State) ->
 open({in, Frames}, #state{mqsocket = MqSocket} = State)
   when length(Frames) == 1 ->
 	?DEBUG("Frames in open: ~p~n", [Frames]),
-	gen_zmq:deliver_accept(MqSocket),
-	{next_state, connected, State};
+	[RemoteId0] = gen_zmq:simple_decap_msg(Frames),
+	RemoteId = gen_zmq:remote_id_assign(RemoteId0),
+	gen_zmq:deliver_accept(MqSocket, RemoteId),
+	{next_state, connected, State#state{remote_id = RemoteId}};
 
 open({in, Frames}, State) ->
 	?DEBUG("Invalid frames in open: ~p~n", [Frames]),
@@ -186,9 +192,9 @@ connected(timeout, State) ->
 	?DEBUG("timeout in connected~n"),
 	{stop, normal, State};
 
-connected({in, [Head|Frames]}, #state{mqsocket = MqSocket} = State) ->
+connected({in, [Head|Frames]}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
 	?DEBUG("in connected Head: ~w, Frames: ~p~n", [Head, Frames]),
-	gen_zmq:deliver_recv(MqSocket, Frames),
+	gen_zmq:deliver_recv(MqSocket, {RemoteId, Frames}),
 	{next_state, connected, State};
 
 connected({send, Msg}, State) ->

@@ -19,8 +19,9 @@
 % DEALINGS IN THE SOFTWARE.
 
 -record(gen_zmq_socket, {
-		  owner      :: pid(),
-		  fsm        :: term(),
+		  owner                  :: pid(),
+		  fsm                    :: term(),
+		  identity = <<>>        :: binary(),
 
 		  %% delivery mechanism
 		  mode = passive         :: 'active'|'active_once'|'passive',
@@ -32,5 +33,6 @@
 		  %% all our registered transports
 		  connecting    :: orddict:orddict(),
 		  listen_trans  :: orddict:orddict(),
-		  transports    :: list()
+		  transports    :: list(),
+		  remote_ids    :: orddict:orddict()
 }).

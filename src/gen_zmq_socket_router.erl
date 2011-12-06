@@ -25,7 +25,7 @@
 %% --------------------------------------------------------------------
 -include("gen_zmq_internal.hrl").
 
--export([init/1, close/4, encap_msg/4, decap_msg/4]).
+-export([init/1, close/4, encap_msg/4, decap_msg/5]).
 -export([idle/4]).
 
 -record(state, {
@@ -57,15 +57,15 @@ close(_StateName, _Transport, MqSState, State) ->
 
 encap_msg({_Transport, {_Identity, Msg}}, _StateName, _MqSState, _State) ->
 	gen_zmq:simple_encap_msg(Msg).
-decap_msg({Transport, Msg}, _StateName, _MqSState, _State) ->
-	{Transport, gen_zmq:simple_decap_msg(Msg)}.
+decap_msg(_Transport, {RemoteId, Msg}, _StateName, _MqSState, _State) ->
+	{RemoteId, gen_zmq:simple_decap_msg(Msg)}.
 
 idle(check, {send, _Msg}, #gen_zmq_socket{transports = []}, _State) ->
 	{drop, not_connected};
-idle(check, {send, {Identity, _Msg}}, #gen_zmq_socket{transports = Transports}, _State) ->
-	case lists:member(Identity, Transports) of
-		true ->
-			{ok, Identity};
+idle(check, {send, {Identity, _Msg}}, MqSState, _State) ->
+	case gen_zmq:transports_get(Identity, MqSState) of
+		Pid when is_pid(Pid) ->
+			{ok, Pid};
 		_ ->
 			{drop, invalid_identity}
 	end;

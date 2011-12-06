@@ -35,7 +35,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/2, start_link/2]).
+-export([start/3, start_link/3]).
 
 %% gen_listener_tcp callbacks
 -export([init/1, handle_accept/2, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -53,19 +53,19 @@
 %% ====================================================================
 
 %% @doc Start the server.
-start(Port, Opts) ->
-    gen_listener_tcp:start(?MODULE, [self(), Port, Opts], [?SERVER_OPTS]).
+start(Identity, Port, Opts) ->
+    gen_listener_tcp:start(?MODULE, [self(), Identity, Port, Opts], [?SERVER_OPTS]).
 
-start_link(Port, Opts) ->
-    gen_listener_tcp:start_link(?MODULE, [self(), Port, Opts], [?SERVER_OPTS]).
+start_link(Identity, Port, Opts) ->
+    gen_listener_tcp:start_link(?MODULE, [self(), Identity, Port, Opts], [?SERVER_OPTS]).
 
-init([MqSocket, Port, Opts]) ->
-    {ok, {Port, Opts}, MqSocket}.
+init([MqSocket, Identity, Port, Opts]) ->
+    {ok, {Port, Opts}, {MqSocket, Identity}}.
 
-handle_accept(Sock, State) ->
+handle_accept(Sock, State = {MqSocket, Identity}) ->
 	case gen_zmq_link:start_connection() of
 		{ok, Pid} ->
-			gen_zmq_link:accept(State, Pid, Sock);
+			gen_zmq_link:accept(MqSocket, Identity, Pid, Sock);
 		_ ->
 			error_logger:error_report([{event, accept_failed}]),
 			gen_tcp:close(Sock)

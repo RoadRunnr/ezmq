@@ -26,7 +26,7 @@
 -include("gen_zmq_debug.hrl").
 -include("gen_zmq_internal.hrl").
 
--export([init/3, check/2, do/2, close/2, encap_msg/2, decap_msg/2]).
+-export([init/3, check/2, do/2, close/2, encap_msg/2, decap_msg/3]).
 
 -record(fsm_state, {
 		  module      :: atom(),
@@ -82,11 +82,11 @@ encap_msg({Transport, Msg}, MqSState = #gen_zmq_socket{fsm = Fsm})
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:encap_msg({Transport, Msg}, StateName, MqSState, State);
 encap_msg({Transport, Msg = {Identity, Parts}}, MqSState = #gen_zmq_socket{fsm = Fsm})
-  when is_pid(Transport), is_pid(Identity), is_list(Parts) ->
+  when is_pid(Transport), is_list(Parts) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
 	 Module:encap_msg({Transport, Msg}, StateName, MqSState, State).
 
-decap_msg({Transport, Msg}, MqSState = #gen_zmq_socket{fsm = Fsm})
+decap_msg(Transport, IdMsg = {_, Msg}, MqSState = #gen_zmq_socket{fsm = Fsm})
   when is_pid(Transport), is_list(Msg) ->
 	#fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
-	 Module:decap_msg({Transport, Msg}, StateName, MqSState, State).
+	 Module:decap_msg(Transport, IdMsg, StateName, MqSState, State).
