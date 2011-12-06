@@ -168,6 +168,9 @@ transports_deactivate(Transport, MqSState = #gen_zmq_socket{transports = Transpo
 transports_while(Fun, Data, Default, #gen_zmq_socket{transports = Transports}) ->
 	do_transports_while(Fun, Data, Transports, Default).
 
+transports_connected(#gen_zmq_socket{transports = Transports}) ->
+	Transports /= [].
+
 %% walk the list of transports
 %% this is intended to hide the details of the transports impl.
 do_transports_while(_Fun, _Data, [], Default) ->
@@ -272,10 +275,12 @@ handle_call({send, Msg}, From, State) ->
 			State2 = gen_zmq_socket_fsm:do(queue_send, State1),
 			case Action of
 				return ->
-					{reply, ok, State2};
+					State3 = check_send_queue(State2),
+					{reply, ok, State3};
 				block  ->
 					State3 = State2#gen_zmq_socket{pending_send = From},
-					{noreply, State3}
+					State4 = check_send_queue(State3),
+					{noreply, State4}
 			end;
 		{drop, Reply} ->
 			{reply, Reply, State};
@@ -317,12 +322,21 @@ handle_cast({deliver_connect, Transport, {ok, RemoteId}}, State) ->
 	State2 = send_queue_run(State1),
 	{noreply, State2};
 
-handle_cast({deliver_connect, Transport, _Reply}, State = #gen_zmq_socket{connecting = Connecting}) ->
-	ConnectArgs = orddict:fetch(Transport, Connecting),
-	?DEBUG("CArgs: ~w~n", [ConnectArgs]),
-	erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = ConnectArgs#cargs.failcnt + 1}}),
-	State2 = State#gen_zmq_socket{connecting = orddict:erase(Transport, Connecting)},
-	{noreply, State2};
+handle_cast({deliver_connect, Transport, Reply}, State = #gen_zmq_socket{connecting = Connecting}) ->
+	case Reply of
+		%% transient errors
+		{error, Reason} when Reason == eagain; Reason == ealready;
+							 Reason == econnrefused; Reason == econnreset ->
+			ConnectArgs = orddict:fetch(Transport, Connecting),
+			?DEBUG("CArgs: ~w~n", [ConnectArgs]),
+			erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = ConnectArgs#cargs.failcnt + 1}}),
+			State2 = State#gen_zmq_socket{connecting = orddict:erase(Transport, Connecting)},
+			{noreply, State2};
+		_ ->
+			State1 = State#gen_zmq_socket{connecting = orddict:erase(Transport, Connecting)},
+			State2 = check_send_queue(State1),
+			{noreply, State2}
+	end;
 
 handle_cast({deliver_close, Transport}, State = #gen_zmq_socket{connecting = Connecting}) ->
 	unlink(Transport),
@@ -334,7 +348,7 @@ handle_cast({deliver_close, Transport}, State = #gen_zmq_socket{connecting = Con
 					 erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = 0}}),
 					 State2#gen_zmq_socket{connecting =orddict:erase(Transport, Connecting)};
 				 _ ->
-					 State2
+					 check_send_queue(State2)
 			 end,
 	State4 = queue_run(State3),
 	?DEBUG("DELIVER_CLOSE: ~p~n", [State4]),
@@ -413,6 +427,26 @@ do_connect(ConnectArgs, MqSState = #gen_zmq_socket{identity = Identity}) ->
 	gen_zmq_link:connect(Identity, Transport, Address, Port, TcpOpts, Timeout),
 	Connecting = orddict:store(Transport, ConnectArgs, MqSState#gen_zmq_socket.connecting),
 	MqSState#gen_zmq_socket{connecting = Connecting}.
+
+check_send_queue(MqSState = #gen_zmq_socket{send_q = []}) ->
+	MqSState;
+check_send_queue(MqSState = #gen_zmq_socket{connecting = Connecting, listen_trans = Listen}) ->
+	case {transports_connected(MqSState), orddict:size(Connecting), orddict:size(Listen)} of
+		{false, 0, 0} -> clear_send_queue(MqSState);
+		_             -> MqSState
+	end.
+
+clear_send_queue(State = #gen_zmq_socket{send_q = []}) ->
+	State;
+clear_send_queue(State = #gen_zmq_socket{send_q = [_Msg], pending_send = From})
+  when From /= none ->
+	gen_server:reply(From, {error, no_connection}),
+	State1 = gen_zmq_socket_fsm:do({deliver_send, abort}, State),
+	State1#gen_zmq_socket{send_q = [], pending_send = none};
+
+clear_send_queue(State = #gen_zmq_socket{send_q = [_Msg|Rest]}) ->
+	State1 = gen_zmq_socket_fsm:do({deliver_send, abort}, State),
+	clear_send_queue(State1#gen_zmq_socket{send_q = Rest}).
 
 send_queue_run(State = #gen_zmq_socket{send_q = []}) ->
 	State;

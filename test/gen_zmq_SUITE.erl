@@ -44,6 +44,12 @@ req_tcp_connect_close(_Config) ->
     ok = gen_zmq:connect(S, {127,0,0,1}, 5555, []),
 	gen_zmq:close(S).
 
+req_tcp_connect_fail(_Config) ->
+    {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
+    ok = gen_zmq:connect(S, "undefined.undefined", 5555, []),
+	{error, _Reason} = gen_zmq:send(S, ["XXX"]),
+	gen_zmq:close(S).
+
 req_tcp_connect_timeout(_Config) ->
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
     ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
@@ -400,6 +406,7 @@ all() ->
     [reqrep_tcp_test_active, reqrep_tcp_test_passive,
      reqrep_tcp_large_active, reqrep_tcp_large_passive,
      shutdown_no_blocking_test,
+	 req_tcp_connect_fail,
      req_tcp_bind_close, req_tcp_connect_close, req_tcp_connect_timeout,
      req_tcp_connecting_timeout, req_tcp_connecting_trash,
      rep_tcp_connecting_timeout, rep_tcp_connecting_trash,

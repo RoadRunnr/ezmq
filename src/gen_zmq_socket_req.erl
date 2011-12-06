@@ -69,6 +69,8 @@ idle(check, {send, _Msg}, #gen_zmq_socket{transports = [Head|_]}, _State) ->
 idle(check, _, _MqSState, _State) ->
 	{error, fsm};
 
+idle(do, {deliver_send, abort}, MqSState, State) ->
+	{next_state, idle, MqSState, State};
 idle(do, {deliver_send, Transport}, MqSState, State) ->
 	State1 = State#state{last_send = Transport},
 	MqSState1 = gen_zmq:lb(Transport, MqSState),
@@ -88,6 +90,8 @@ send_queued(check, dequeue_send, _MqSState, _State) ->
 send_queued(check, _, _MqSState, _State) ->
 	{error, fsm};
 
+send_queued(do, {deliver_send, abort}, MqSState, State) ->
+	{next_state, idle, MqSState, State};
 send_queued(do, {deliver_send, Transport}, MqSState, State) ->
 	State1 = State#state{last_send = Transport},
 	MqSState1 = gen_zmq:lb(Transport, MqSState),
