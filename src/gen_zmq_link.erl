@@ -29,7 +29,7 @@
 
 %% API
 -export([start_link/0]).
--export([start_connection/0, accept/4, connect/6, close/1]).
+-export([start_connection/0, accept/4, connect/6, connect/7, close/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -89,8 +89,11 @@ accept(MqSocket, Identity, Server, Socket) ->
     gen_tcp:controlling_process(Socket, Server),
 	gen_fsm:send_event(Server, {accept, MqSocket, Identity, Socket}).
 
-connect(Identity, Server, Address, Port, TcpOpts, Timeout) ->
-	gen_fsm:send_event(Server, {connect, self(), Identity, Address, Port, TcpOpts, Timeout}).
+connect(Identity, Server, unix, Path, TcpOpts, Timeout) ->
+	gen_fsm:send_event(Server, {connect, self(), Identity, unix, Path, TcpOpts, Timeout}).
+
+connect(Identity, Server, tcp, Address, Port, TcpOpts, Timeout) ->
+	gen_fsm:send_event(Server, {connect, self(), Identity, tcp, Address, Port, TcpOpts, Timeout}).
 
 send(Server, Msg) ->
 	gen_fsm:send_event(Server, {send, Msg}).
@@ -140,7 +143,7 @@ setup({accept, MqSocket, Identity, Socket}, State) ->
 	?DEBUG("NewState: ~p~n", [NewState]),
 	send_frames([Identity], {next_state, open, NewState, ?CONNECT_TIMEOUT});
 
-setup({connect, MqSocket, Identity, Address, Port, TcpOpts, Timeout}, State) ->
+setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
 	?DEBUG("got connect: ~w, ~w~n", [Address, Port]),
 
 	%%TODO: socket options
@@ -149,6 +152,28 @@ setup({connect, MqSocket, Identity, Address, Port, TcpOpts, Timeout}, State) ->
 			NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
 			ok = inet:setopts(Socket, [{active, once}]),
 			{next_state, connecting, NewState, ?CONNECT_TIMEOUT};
+		Reply ->
+			gen_zmq:deliver_connect(MqSocket, Reply),
+			{stop, normal, State}				
+	end;
+
+setup({connect, MqSocket, Identity, unix, Path, TcpOpts, _Timeout}, State) ->
+	?DEBUG("got unix connect: ~p~n", [Path]),
+
+	%%TODO: socket options
+    {ok, Fd} = gen_socket:socket(unix, stream, 0),
+    case gen_socket:connect(Fd, gen_socket:sockaddr_unix(Path)) of
+		ok -> case gen_tcp:fdopen(Fd, TcpOpts) of
+				  {ok, Socket} ->
+					  NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
+					  ok = inet:setopts(Socket, [{active, once}]),
+					  ?DEBUG("unix connect ok~n"),
+					  {next_state, connecting, NewState, ?CONNECT_TIMEOUT};
+				  Reply ->
+					  gen_zmq:deliver_connect(MqSocket, Reply),
+					  ?DEBUG("unix connect fail ~p,~p~n", [Reply, TcpOpts]),
+					  {stop, normal, State}				
+			  end;
 		Reply ->
 			gen_zmq:deliver_connect(MqSocket, Reply),
 			{stop, normal, State}				

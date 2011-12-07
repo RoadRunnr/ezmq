@@ -29,6 +29,11 @@ reqrep_tcp_test_active(_Config) ->
 reqrep_tcp_test_passive(_Config) ->
     basic_tests({127,0,0,1}, 5557, req, rep, passive, 3).
 
+reqrep_unix_test_active(_Config) ->
+    basic_tests([0,"/tmp/reqrep_unix_test_active"], req, rep, active, 3).
+reqrep_unix_test_passive(_Config) ->
+    basic_tests([0,"/tmp/reqrep_unix_test_passive"], req, rep, passive, 3).
+
 reqrep_tcp_large_active(_Config) ->
     basic_tests({127,0,0,1}, 5556, req, rep, active, 256).
 reqrep_tcp_large_passive(_Config) ->
@@ -36,23 +41,23 @@ reqrep_tcp_large_passive(_Config) ->
 
 req_tcp_bind_close(_Config) ->
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-	ok = gen_zmq:bind(S, 5555, []),
+	ok = gen_zmq:bind(S, tcp, 5555, []),
 	gen_zmq:close(S).
 
 req_tcp_connect_close(_Config) ->
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, []),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, []),
 	gen_zmq:close(S).
 
 req_tcp_connect_fail(_Config) ->
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, "undefined.undefined", 5555, []),
+    ok = gen_zmq:connect(S, tcp, "undefined.undefined", 5555, []),
 	{error, _Reason} = gen_zmq:send(S, ["XXX"]),
 	gen_zmq:close(S).
 
 req_tcp_connect_timeout(_Config) ->
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	ct:sleep(2000),
 	gen_zmq:close(S).
 
@@ -64,25 +69,25 @@ req_tcp_connecting_timeout(_Config) ->
 				  gen_tcp:close(S1)
 		  end),
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	ct:sleep(15000),    %% wait for the connection setup timeout
 	gen_zmq:close(S).
 dealer_tcp_bind_close(_Config) ->
     {ok, S} = gen_zmq:socket([{type, dealer}, {active, false}]),
-	ok = gen_zmq:bind(S, 5555, []),
+	ok = gen_zmq:bind(S, tcp, 5555, []),
 	gen_zmq:close(S).
 
 dealer_tcp_connect_close(_Config) ->
     {ok, S} = gen_zmq:socket([{type, dealer}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, []),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, []),
 	gen_zmq:close(S).
 
 dealer_tcp_connect_timeout(_Config) ->
     {ok, S} = gen_zmq:socket([{type, dealer}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	ct:sleep(2000),
 	gen_zmq:close(S).
 
@@ -94,10 +99,10 @@ dealer_tcp_connecting_timeout(_Config) ->
 				  gen_tcp:close(S1)
 		  end),
     {ok, S} = gen_zmq:socket([{type, dealer}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	ct:sleep(15000),    %% wait for the connection setup timeout
 	gen_zmq:close(S).
 
@@ -113,7 +118,7 @@ req_tcp_connecting_trash(_Config) ->
 				  Self ! done
 		  end),
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	receive 
 		done -> ok
 	after
@@ -124,7 +129,7 @@ req_tcp_connecting_trash(_Config) ->
 
 rep_tcp_connecting_timeout(_Config) ->
     {ok, S} = gen_zmq:socket([{type, rep}, {active, false}]),
-	ok = gen_zmq:bind(S, 5555, []),
+	ok = gen_zmq:bind(S, tcp, 5555, []),
 	spawn(fun() ->
 				  {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
 				  ct:sleep(15000),   %% keep socket alive for at least 10sec...
@@ -136,7 +141,7 @@ rep_tcp_connecting_timeout(_Config) ->
 rep_tcp_connecting_trash(_Config) ->
 	Self = self(),
     {ok, S} = gen_zmq:socket([{type, rep}, {active, false}]),
-	ok = gen_zmq:bind(S, 5555, []),
+	ok = gen_zmq:bind(S, tcp, 5555, []),
 	spawn(fun() ->
 				  {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
 				  T = <<1,16#FF,"TRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASH">>,
@@ -170,7 +175,7 @@ req_tcp_fragment(_Config) ->
 				  Self ! done
 		  end),
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, {127,0,0,1}, 5555, [{timeout, 1000}]),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
 	receive 
 		connected -> ok
 	after
@@ -185,7 +190,7 @@ create_multi_connect(Type, Active, IP, Port, 0, Acc) ->
 	Acc;
 create_multi_connect(Type, Active, IP, Port, Cnt, Acc) ->
 	{ok, S2} = gen_zmq:socket([{type, Type}, {active, Active}]),
-    ok = gen_zmq:connect(S2, IP, Port, []),
+    ok = gen_zmq:connect(S2, tcp, IP, Port, []),
 	create_multi_connect(Type, Active, IP, Port, Cnt - 1, [S2|Acc]).
 
 create_bound_pair_multi(Type1, Type2, Cnt2, Mode, IP, Port) ->
@@ -196,7 +201,7 @@ create_bound_pair_multi(Type1, Type2, Cnt2, Mode, IP, Port) ->
             false
     end,
     {ok, S1} = gen_zmq:socket([{type, Type1}, {active, Active}]),
-    ok = gen_zmq:bind(S1, Port, []),
+    ok = gen_zmq:bind(S1, tcp, Port, []),
 
 	S2 = create_multi_connect(Type2, Active, IP, Port, Cnt2, []),
 	ct:sleep(10),  %% give it a moment to establish all sockets....
@@ -289,7 +294,7 @@ shutdown_stress_loop(0) ->
     ok;
 shutdown_stress_loop(N) ->
     {ok, S1} = gen_zmq:socket([{type, rep}, {active, false}]),
-	ok = gen_zmq:bind(S1, 5558 + N, []),
+	ok = gen_zmq:bind(S1, tcp, 5558 + N, []),
     shutdown_stress_worker_loop(N, 100),
     ok = join_procs(100),
     gen_zmq:close(S1),
@@ -318,7 +323,7 @@ shutdown_stress_worker_loop(P, N) ->
     shutdown_stress_worker_loop(P, N-1).
 
 worker(Pid, S, Port) ->
-    ok = gen_zmq:connect(S, {127,0,0,1}, Port, []),
+    ok = gen_zmq:connect(S, tcp, {127,0,0,1}, Port, []),
     ok = gen_zmq:close(S),
     Pid ! proc_end.
 
@@ -331,8 +336,21 @@ create_bound_pair(Type1, Type2, Mode, IP, Port) ->
     end,
     {ok, S1} = gen_zmq:socket([{type, Type1}, {active, Active}]),
     {ok, S2} = gen_zmq:socket([{type, Type2}, {active, Active}]),
-    ok = gen_zmq:bind(S1, Port, []),
-    ok = gen_zmq:connect(S2, IP, Port, []),
+    ok = gen_zmq:bind(S1, tcp, Port, []),
+    ok = gen_zmq:connect(S2, tcp, IP, Port, []),
+    {S1, S2}.
+
+create_bound_pair(Type1, Type2, Mode, Path) ->
+    Active = if
+        Mode =:= active ->
+            true;
+        Mode =:= passive ->
+            false
+    end,
+    {ok, S1} = gen_zmq:socket([{type, Type1}, {active, Active}]),
+    {ok, S2} = gen_zmq:socket([{type, Type2}, {active, Active}]),
+    ok = gen_zmq:bind(S1, unix, Path, []),
+    ok = gen_zmq:connect(S2, unix, Path, []),
     {S1, S2}.
 
 %% assert that message queue is empty....
@@ -393,17 +411,26 @@ basic_tests(IP, Port, Type1, Type2, Mode, Size) ->
     ok = gen_zmq:close(S1),
     ok = gen_zmq:close(S2).
 
+basic_tests(Path, Type1, Type2, Mode, Size) ->
+    {S1, S2} = create_bound_pair(Type1, Type2, Mode, Path),
+	Msg = list_to_binary(string:chars($X, Size)),
+    ping_pong({S1, S2}, Msg, Mode),
+    ok = gen_zmq:close(S1),
+    ok = gen_zmq:close(S2).
+
 init_per_suite(Config) ->
-	application:start(sasl),
-	application:start(gen_listener_tcp),
-	application:start(gen_zmq),
+	ok = application:start(sasl),
+	ok = application:start(gen_listener_tcp),
+	ok = application:start(gen_socket),
+	ok = application:start(gen_zmq),
 	Config.
 
 end_per_suite(Config) ->
 	Config.
 
 all() ->
-    [reqrep_tcp_test_active, reqrep_tcp_test_passive,
+    [
+	 reqrep_tcp_test_active, reqrep_tcp_test_passive,
      reqrep_tcp_large_active, reqrep_tcp_large_passive,
      shutdown_no_blocking_test,
 	 req_tcp_connect_fail,
@@ -414,4 +441,6 @@ all() ->
      dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout,
 	 basic_tests_rep_req, basic_tests_dealer, basic_tests_router,
 	 basic_tests_pub_sub,
-     shutdown_stress_test].
+     shutdown_stress_test,
+	 reqrep_unix_test_active, reqrep_unix_test_passive
+	].
