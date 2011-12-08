@@ -45,6 +45,7 @@
 		 terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE). 
+-define(port(P), (((P) band bnot 16#ffff) =:= 0)).
 -record(cargs, {family, address, port, tcpopts, timeout, failcnt}).
 
 -ifdef(debug).
@@ -75,16 +76,29 @@ socket_link(Opts) when is_list(Opts) ->
 socket(Opts) when is_list(Opts) ->
 	start(Opts).
 
-bind(Socket, tcp, Port, Opts) ->
+bind(Socket, tcp, Port, Opts) when ?port(Port) ->
+	Valid = case proplists:get_value(ip, Opts) of
+				undefined -> {ok, undef};
+				Address   -> validate_address(Address)
+			end,
+
 	%%TODO: socket options
-	gen_server:call(Socket, {bind, tcp, Port, Opts});
+	case Valid of
+		{ok, _} -> gen_server:call(Socket, {bind, tcp, Port, Opts});
+		Res     -> Res
+	end;
 
 bind(Socket, unix, Path, Opts) ->
 	%%TODO: socket options
 	gen_server:call(Socket, {bind, unix, Path, Opts}).
 
-connect(Socket, tcp, Address, Port, Opts) ->
-	gen_server:call(Socket, {connect, tcp, Address, Port, Opts}).
+connect(Socket, tcp, Address, Port, Opts) when ?port(Port) ->
+	Valid = validate_address(Address),
+	case Valid of
+		{ok, _} -> gen_server:call(Socket, {connect, tcp, Address, Port, Opts});
+		Res     -> Res
+	end.
+
 connect(Socket, unix, Path, Opts) ->
 	gen_server:call(Socket, {connect, unix, Path, Opts}).
 
@@ -669,3 +683,8 @@ do_setopts({active, false}, MqSState) ->
 
 do_setopts(_, MqSState) ->
 	MqSState.
+
+validate_address(Address) when is_list(Address)  -> inet:gethostbyname(Address);
+validate_address(Address) when is_tuple(Address) -> inet:gethostbyaddr(Address);
+validate_address(_Address) -> exit(badarg).
+

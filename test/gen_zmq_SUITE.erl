@@ -51,8 +51,7 @@ req_tcp_connect_close(_Config) ->
 
 req_tcp_connect_fail(_Config) ->
     {ok, S} = gen_zmq:socket([{type, req}, {active, false}]),
-    ok = gen_zmq:connect(S, tcp, "undefined.undefined", 5555, []),
-	{error, _Reason} = gen_zmq:send(S, ["XXX"]),
+    {error,nxdomain} = gen_zmq:connect(S, tcp, "undefined.undefined", 5555, []),
 	gen_zmq:close(S).
 
 req_tcp_connect_timeout(_Config) ->
