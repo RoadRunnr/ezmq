@@ -21,16 +21,16 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_connection() ->
-	supervisor:start_child(?MODULE, []).
+    supervisor:start_child(?MODULE, []).
 
 datapaths() ->
-	lists:map(fun({_, Child, _, _}) -> Child end, supervisor:which_children(?MODULE)).
+    lists:map(fun({_, Child, _, _}) -> Child end, supervisor:which_children(?MODULE)).
 
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
 init([]) ->
-	{ok, {{simple_one_for_one, 0, 1},
+    {ok, {{simple_one_for_one, 0, 1},
           [{gen_zmq_link, {gen_zmq_link, start_link, []},
             temporary, brutal_kill, worker, [gen_zmq_link]}]}}.

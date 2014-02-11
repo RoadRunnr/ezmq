@@ -11,7 +11,7 @@
 -define(TCP_OPTS, [binary, inet,
                    {ip,           {127,0,0,1}},
                    {active,       false},
-				   {send_timeout, 5000},
+                   {send_timeout, 5000},
                    {backlog,      10},
                    {nodelay,      true},
                    {packet,       raw},
@@ -47,13 +47,13 @@ init([MqSocket, Identity, Port, Opts]) ->
     {ok, {Port, Opts}, {MqSocket, Identity}}.
 
 handle_accept(Sock, State = {MqSocket, Identity}) ->
-	case gen_zmq_link:start_connection() of
-		{ok, Pid} ->
-			gen_zmq_link:accept(MqSocket, Identity, Pid, Sock);
-		_ ->
-			error_logger:error_report([{event, accept_failed}]),
-			gen_tcp:close(Sock)
-	end,
+    case gen_zmq_link:start_connection() of
+        {ok, Pid} ->
+            gen_zmq_link:accept(MqSocket, Identity, Pid, Sock);
+        _ ->
+            error_logger:error_report([{event, accept_failed}]),
+            gen_tcp:close(Sock)
+    end,
     {noreply, State}.
 
 handle_call(Request, _From, State) ->
@@ -66,7 +66,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, _State) ->
-	?DEBUG("gen_zmq_tcp_socket terminate on ~p", [Reason]),
+    ?DEBUG("gen_zmq_tcp_socket terminate on ~p", [Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

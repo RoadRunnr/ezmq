@@ -13,7 +13,7 @@
 -export([idle/4, pending/4, processing/4]).
 
 -record(state, {
-		  last_recv = none  :: pid()|'none'
+          last_recv = none  :: pid()|'none'
 }).
 
 %%%===================================================================
@@ -35,69 +35,69 @@
 %%--------------------------------------------------------------------
 
 init(_Opts) ->
-	{ok, idle, #state{}}.
+    {ok, idle, #state{}}.
 
 close(_StateName, _Transport, MqSState, State) ->
-	State1 = State#state{last_recv = none},
-	{next_state, idle, MqSState, State1}.
+    State1 = State#state{last_recv = none},
+    {next_state, idle, MqSState, State1}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_encap_msg(Msg).
+    gen_zmq:simple_encap_msg(Msg).
 decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_decap_msg(Msg).
+    gen_zmq:simple_decap_msg(Msg).
 
 idle(check, recv, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, deliver, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, _, _MqSState, _State) ->
-	{error, fsm};
+    {error, fsm};
 
 idle(do, {queue, _Transport}, MqSState, State) ->
-	{next_state, pending, MqSState, State};
+    {next_state, pending, MqSState, State};
 idle(do, {dequeue, _Transport}, MqSState, State) ->
-	{next_state, pending, MqSState, State};
+    {next_state, pending, MqSState, State};
 idle(do, {deliver, Transport}, MqSState, State) ->
-	State1 = State#state{last_recv = Transport},
-	{next_state, processing, MqSState, State1};
+    State1 = State#state{last_recv = Transport},
+    {next_state, processing, MqSState, State1};
 idle(do, _, _MqSState, _State) ->
-	{error, fsm}.
+    {error, fsm}.
 
 pending(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-	ok;
+    ok;
 pending(check, recv, _MqSState, _State) ->
-	ok;
+    ok;
 pending(check, deliver, _MqSState, _State) ->
-	ok;
+    ok;
 pending(check, _, _MqSState, _State) ->
-	{error, fsm};
+    {error, fsm};
 
 pending(do, {queue, _Transport}, MqSState, State) ->
-	{next_state, pending, MqSState, State};
+    {next_state, pending, MqSState, State};
 pending(do, {dequeue, _Transport}, MqSState, State) ->
-	{next_state, pending, MqSState, State};
+    {next_state, pending, MqSState, State};
 pending(do, {deliver, Transport}, MqSState, State) ->
-	State1 = State#state{last_recv = Transport},
-	{next_state, processing, MqSState, State1};
+    State1 = State#state{last_recv = Transport},
+    {next_state, processing, MqSState, State1};
 pending(do, _, _MqSState, _State) ->
-	{error, fsm}.
+    {error, fsm}.
 
 processing(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-	ok;
+    ok;
 processing(check, {deliver, _Transport}, _MqSState, _State) ->
-	queue;
+    queue;
 processing(check, {send, _Msg}, _MqSState, #state{last_recv = Transport}) ->
-	{ok, Transport};
+    {ok, Transport};
 processing(check, _, _MqSState, _State) ->
-	{error, fsm};
+    {error, fsm};
 
 processing(do, {deliver_send, _Transport}, MqSState, State) ->
-	State1 = State#state{last_recv = none},
-	{next_state, idle, MqSState, State1};
+    State1 = State#state{last_recv = none},
+    {next_state, idle, MqSState, State1};
 processing(do, {queue, _Transport}, MqSState, State) ->
-	{next_state, processing, MqSState, State};
+    {next_state, processing, MqSState, State};
 
 processing(do, _, _MqSState, _State) ->
-	{error, fsm}.
+    {error, fsm}.

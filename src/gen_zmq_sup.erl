@@ -28,6 +28,6 @@ start_link() ->
 
 init([]) ->
     {ok, {{one_for_one, 5, 10}, [
-								 ?CHILD(gen_zmq_link_sup, supervisor)
-								]} }.
+                                 ?CHILD(gen_zmq_link_sup, supervisor)
+                                ]} }.
 

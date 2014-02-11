@@ -34,30 +34,30 @@
 %%--------------------------------------------------------------------
 
 init(_Opts) ->
-	{ok, idle, #state{}}.
+    {ok, idle, #state{}}.
 
 close(_StateName, _Transport, MqSState, State) ->
-	{next_state, idle, MqSState, State}.
+    {next_state, idle, MqSState, State}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_encap_msg(Msg).
+    gen_zmq:simple_encap_msg(Msg).
 decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_decap_msg(Msg).
+    gen_zmq:simple_decap_msg(Msg).
 
 idle(check, deliver, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, recv, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, _, _MqSState, _State) ->
-	{error, fsm};
+    {error, fsm};
 
 idle(do, {deliver, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {queue, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {dequeue, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, _, _MqSState, _State) ->
-	{error, fsm}.
+    {error, fsm}.

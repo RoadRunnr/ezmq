@@ -34,46 +34,46 @@
 %%--------------------------------------------------------------------
 
 init(_Opts) ->
-	{ok, idle, #state{}}.
+    {ok, idle, #state{}}.
 
 close(_StateName, _Transport, MqSState, State) ->
-	{next_state, idle, MqSState, State}.
+    {next_state, idle, MqSState, State}.
 
 encap_msg({_Transport, {_Identity, Msg}}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_encap_msg(Msg).
+    gen_zmq:simple_encap_msg(Msg).
 decap_msg(_Transport, {RemoteId, Msg}, _StateName, _MqSState, _State) ->
-	{RemoteId, gen_zmq:simple_decap_msg(Msg)}.
+    {RemoteId, gen_zmq:simple_decap_msg(Msg)}.
 
 idle(check, {send, _Msg}, #gen_zmq_socket{transports = []}, _State) ->
-	{drop, not_connected};
+    {drop, not_connected};
 idle(check, {send, {Identity, _Msg}}, MqSState, _State) ->
-	case gen_zmq:transports_get(Identity, MqSState) of
-		Pid when is_pid(Pid) ->
-			{ok, Pid};
-		_ ->
-			{drop, invalid_identity}
-	end;
+    case gen_zmq:transports_get(Identity, MqSState) of
+        Pid when is_pid(Pid) ->
+            {ok, Pid};
+        _ ->
+            {drop, invalid_identity}
+    end;
 idle(check, deliver, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, recv, _MqSState, _State) ->
-	ok;
+    ok;
 idle(check, _, _MqSState, _State) ->
-	{error, fsm};
+    {error, fsm};
 
 idle(do, queue_send, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {deliver_send, abort}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {deliver_send, Transport}, MqSState, State) ->
-	MqSState1 = gen_zmq:lb(Transport, MqSState),
-	{next_state, idle, MqSState1, State};
+    MqSState1 = gen_zmq:lb(Transport, MqSState),
+    {next_state, idle, MqSState1, State};
 idle(do, {deliver, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {queue, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {dequeue, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, _, _MqSState, _State) ->
-	{error, fsm}.
+    {error, fsm}.

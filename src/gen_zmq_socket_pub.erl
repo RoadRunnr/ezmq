@@ -34,30 +34,30 @@
 %%--------------------------------------------------------------------
 
 init(_Opts) ->
-	{ok, idle, #state{}}.
+    {ok, idle, #state{}}.
 
 close(_StateName, _Transport, MqSState, State) ->
-	{next_state, idle, MqSState, State}.
+    {next_state, idle, MqSState, State}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_encap_msg(Msg).
+    gen_zmq:simple_encap_msg(Msg).
 decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
-	gen_zmq:simple_decap_msg(Msg).
+    gen_zmq:simple_decap_msg(Msg).
 
 idle(check, {send, _Msg}, #gen_zmq_socket{transports = []}, _State) ->
-	{queue, block};
+    {queue, block};
 idle(check, {send, _Msg}, #gen_zmq_socket{transports = Transports}, _State) ->
-	{ok, Transports};
+    {ok, Transports};
 idle(check, dequeue_send, #gen_zmq_socket{transports = Transports}, _State) ->
-	{ok, Transports};
+    {ok, Transports};
 idle(check, dequeue_send, _MqSState, _State) ->
-	keep;
+    keep;
 idle(check, _, _MqSState, _State) ->
-	{error, fsm};
+    {error, fsm};
 
 idle(do, queue_send, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, {deliver_send, _Transport}, MqSState, State) ->
-	{next_state, idle, MqSState, State};
+    {next_state, idle, MqSState, State};
 idle(do, _, _MqSState, _State) ->
-	{error, fsm}.
+    {error, fsm}.
