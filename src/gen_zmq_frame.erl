@@ -18,16 +18,19 @@ frame_type(_, _) -> normal.
     
 
 decode(Ver, Data = <<16#FF, Length:64/unsigned-integer, Flags:8/bits, Rest/binary>>) ->
-    decode(Ver, Length - 1, Flags, Rest, Data);
+    decode(Ver, Length, Flags, Rest, Data);
 decode(Ver, Data = <<Length:8/integer, Flags:8/bits, Rest/binary>>) ->
-    decode(Ver, Length - 1, Flags, Rest, Data);
+    decode(Ver, Length, Flags, Rest, Data);
 decode(_Ver, Data) ->
     {more, Data}.
 
-decode(_Ver, FrameLen, _Flags, Msg, Data) when size(Msg) < FrameLen ->
+decode(_Ver, FrameLen, _Flags, _Msg, _Data) when FrameLen =:= 0 ->
+    {false, {normal, <<>>}};
+decode(_Ver, FrameLen, _Flags, Msg, Data) when size(Msg) < FrameLen - 1->
     {more, Data};
 decode(Ver, FrameLen, <<Label:1, _:6, More:1>>, Msg, _Data) ->
-    <<Frame:FrameLen/bytes, Rem/binary>> = Msg,
+    FLen = FrameLen - 1,
+    <<Frame:FLen/bytes, Rem/binary>> = Msg,
     {{bool(More), {frame_type(Ver, Label), Frame}}, Rem}.
 
     
