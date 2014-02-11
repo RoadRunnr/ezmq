@@ -149,8 +149,8 @@ req_tcp_fragment(_Config) ->
 	spawn(fun() ->
 				  {ok, L} = gen_tcp:listen(5555,[binary, {active, false}, {packet, raw}, {reuseaddr, true}, {nodelay, true}]),
 				  {ok, S1} = gen_tcp:accept(L),
-				  req_tcp_fragment_send(S1, <<16#01, 16#7E>>),
-				  gen_tcp:recv(S1, 0),
+				  req_tcp_fragment_send(S1, <<16#01, 16#00>>),
+				  {ok, _} = gen_tcp:recv(S1, 0),
 				  Self ! connected,
 				  {ok,<<_:4/bytes,"ZZZ">>} = gen_tcp:recv(S1, 0),
 				  req_tcp_fragment_send(S1, <<16#01, 16#7F, 16#06, 16#7E, "Hello">>),
