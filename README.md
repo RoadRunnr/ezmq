@@ -32,3 +32,9 @@ TODO:
 * identity support
 * send queue improvements
 * high water marks for send queue
+
+License
+-------
+
+The project is released under the MPL 2.0 license
+http://mozilla.org/MPL/2.0/.
