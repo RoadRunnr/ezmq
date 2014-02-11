@@ -304,6 +304,20 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
     ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
 
     case Msg of
+	{_, _} when StateName =:= connecting ->
+	    %% FIXME: brutal hack, ZMTP 4.0 compat...
+            Frames = [{normal, <<>>}],
+            State2 = State1#state{frames = []},
+            ?DEBUG("handle_data: finale decoded: ~p~n", [Frames]),
+            Reply = exec_sync(Frames, StateName, State2),
+            ?DEBUG("handle_data: reply: ~p~n", [Reply]),
+            case element(1, Reply) of
+                next_state ->
+                    handle_data(element(2, Reply), element(3, Reply), Reply);
+                _ ->
+                    Reply
+            end;
+
         more ->
             ok = inet:setopts(Socket, [{active, once}]),
             setelement(3, ProcessStateNext, State1);
