@@ -65,7 +65,7 @@ encap_msg({Transport, Msg}, MqSState = #ezmq_socket{fsm = Fsm})
   when is_pid(Transport), is_list(Msg) ->
     #fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
      Module:encap_msg({Transport, Msg}, StateName, MqSState, State);
-encap_msg({Transport, Msg = {Identity, Parts}}, MqSState = #ezmq_socket{fsm = Fsm})
+encap_msg({Transport, Msg = {_Identity, Parts}}, MqSState = #ezmq_socket{fsm = Fsm})
   when is_pid(Transport), is_list(Parts) ->
     #fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
      Module:encap_msg({Transport, Msg}, StateName, MqSState, State).
