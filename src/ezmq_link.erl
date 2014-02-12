@@ -2,14 +2,14 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
--module(gen_zmq_link).
+-module(ezmq_link).
 
 -behaviour(gen_fsm).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("gen_zmq_debug.hrl").
+-include("ezmq_debug.hrl").
 
 %% API
 -export([start_link/0]).
@@ -67,7 +67,7 @@ start_link() ->
     gen_fsm:start_link(?MODULE, [], [?FSM_OPTS]).
 
 start_connection() ->
-    gen_zmq_link_sup:start_connection().
+    ezmq_link_sup:start_connection().
 
 accept(MqSocket, Identity, Server, Socket) ->
     gen_tcp:controlling_process(Socket, Server),
@@ -125,7 +125,7 @@ setup({accept, MqSocket, Identity, Socket}, State) ->
     ?DEBUG("got setup~n"),
     NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
     ?DEBUG("NewState: ~p~n", [NewState]),
-    Packet = gen_zmq_frame:encode_greeting(State#state.version, undefined, Identity),
+    Packet = ezmq_frame:encode_greeting(State#state.version, undefined, Identity),
     send_packet(Packet, {next_state, open, NewState, ?CONNECT_TIMEOUT});
 
 setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
@@ -138,7 +138,7 @@ setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State
             ok = inet:setopts(Socket, [{active, once}]),
             {next_state, connecting, NewState, ?CONNECT_TIMEOUT};
         Reply ->
-            gen_zmq:deliver_connect(MqSocket, Reply),
+            ezmq:deliver_connect(MqSocket, Reply),
             {stop, normal, State}                
     end;
 
@@ -155,30 +155,30 @@ setup({connect, MqSocket, Identity, unix, Path, TcpOpts, _Timeout}, State) ->
                       ?DEBUG("unix connect ok~n"),
                       {next_state, connecting, NewState, ?CONNECT_TIMEOUT};
                   Reply ->
-                      gen_zmq:deliver_connect(MqSocket, Reply),
+                      ezmq:deliver_connect(MqSocket, Reply),
                       ?DEBUG("unix connect fail ~p,~p~n", [Reply, TcpOpts]),
                       {stop, normal, State}                
               end;
         Reply ->
-            gen_zmq:deliver_connect(MqSocket, Reply),
+            ezmq:deliver_connect(MqSocket, Reply),
             {stop, normal, State}                
     end.
 
 connecting(timeout, State = #state{mqsocket = MqSocket}) ->
     ?DEBUG("timeout in connecting~n"),
-    gen_zmq:deliver_connect(MqSocket, {error, timeout}),
+    ezmq:deliver_connect(MqSocket, {error, timeout}),
     {stop, normal, State};
 
 connecting({greeting, Ver, _SocketType, RemoteId0},
            State = #state{mqsocket = MqSocket, identity = Identity}) ->
-    RemoteId = gen_zmq:remote_id_assign(RemoteId0),
-    gen_zmq:deliver_connect(MqSocket, {ok, RemoteId}),
-    Packet = gen_zmq_frame:encode_greeting(State#state.version, undefined, Identity),
+    RemoteId = ezmq:remote_id_assign(RemoteId0),
+    ezmq:deliver_connect(MqSocket, {ok, RemoteId}),
+    Packet = ezmq_frame:encode_greeting(State#state.version, undefined, Identity),
     send_packet(Packet, {next_state, connected, State #state{remote_id = RemoteId, version = Ver}});
 
 connecting(Msg, State = #state{mqsocket = MqSocket}) ->
     ?DEBUG("Invalid message in connecting: ~p~n", [Msg]),
-    gen_zmq:deliver_connect(MqSocket, {error, data}),
+    ezmq:deliver_connect(MqSocket, {error, data}),
     {stop, normal, State}.
 
 open(timeout, State) ->
@@ -187,8 +187,8 @@ open(timeout, State) ->
 
 open({greeting, Ver, _SocketType, RemoteId0},
      #state{mqsocket = MqSocket} = State) ->
-    RemoteId = gen_zmq:remote_id_assign(RemoteId0),
-    gen_zmq:deliver_accept(MqSocket, RemoteId),
+    RemoteId = ezmq:remote_id_assign(RemoteId0),
+    ezmq:deliver_accept(MqSocket, RemoteId),
     {next_state, connected, State#state{remote_id = RemoteId, version = Ver}};
 
 open(Msg, State) ->
@@ -201,7 +201,7 @@ connected(timeout, State) ->
 
 connected({in, [Head|Frames]}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
     ?DEBUG("in connected Head: ~w, Frames: ~p~n", [Head, Frames]),
-    gen_zmq:deliver_recv(MqSocket, {RemoteId, Frames}),
+    ezmq:deliver_recv(MqSocket, {RemoteId, Frames}),
     {next_state, connected, State};
 
 connected({send, Msg}, State) ->
@@ -299,7 +299,7 @@ handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNex
 handle_data(StateName, #state{socket = Socket, pending = Pending} = State, ProcessStateNext)
   when StateName =:= connecting;
        StateName =:= open ->
-    {Msg, DataRest} = gen_zmq_frame:decode_greeting(Pending),
+    {Msg, DataRest} = ezmq_frame:decode_greeting(Pending),
     State1 = State#state{pending = DataRest},
     ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
 
@@ -321,7 +321,7 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
     end;
 
 handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending} = State, ProcessStateNext) ->
-    {Msg, DataRest} = gen_zmq_frame:decode(Ver, Pending),
+    {Msg, DataRest} = ezmq_frame:decode(Ver, Pending),
     State1 = State#state{pending = DataRest},
     ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
 
@@ -360,12 +360,12 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 terminate(_Reason, _StateName, #state{mqsocket = MqSocket, socket = Socket})
   when is_port(Socket) ->
     ?DEBUG("terminate"),
-    catch gen_zmq:deliver_close(MqSocket),
+    catch ezmq:deliver_close(MqSocket),
     gen_tcp:close(Socket),
     ok;
 terminate(_Reason, _StateName, #state{mqsocket = MqSocket}) ->
     ?DEBUG("terminate"),
-    catch gen_zmq:deliver_close(MqSocket),
+    catch ezmq:deliver_close(MqSocket),
     ok.
 
 %%--------------------------------------------------------------------
@@ -394,7 +394,7 @@ handle_data_reply(Reply) ->
     Reply.
 
 send_frames(Frames, NextStateInfo) ->
-    Packet = gen_zmq_frame:encode(Frames),
+    Packet = ezmq_frame:encode(Frames),
     send_packet(Packet, NextStateInfo).
 
 send_packet(Packet, NextStateInfo) ->

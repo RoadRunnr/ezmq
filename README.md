@@ -1,7 +1,7 @@
-gen_zmq - ØMQ in pure Erlang
+ezmq - ØMQ in pure Erlang
 ============================
 
-gen_zmq implements the ØMQ protocol in 100% pure Erlang.
+ezmq implements the ØMQ protocol in 100% pure Erlang.
 
 Motivation
 ----------

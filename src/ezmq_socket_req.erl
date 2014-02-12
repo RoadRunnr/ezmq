@@ -2,12 +2,12 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
--module(gen_zmq_socket_req).
+-module(ezmq_socket_req).
 
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("gen_zmq_internal.hrl").
+-include("ezmq_internal.hrl").
 
 -export([init/1, close/4, encap_msg/4, decap_msg/5]).
 -export([idle/4, pending/4, send_queued/4, reply/4]).
@@ -21,7 +21,7 @@
 %%%===================================================================
 
 %%%===================================================================
-%%% gen_zmq_socket callbacks
+%%% ezmq_socket callbacks
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -42,13 +42,13 @@ close(_StateName, _Transport, MqSState, State) ->
     {next_state, idle, MqSState, State1}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-    gen_zmq:simple_encap_msg(Msg).
+    ezmq:simple_encap_msg(Msg).
 decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
-    gen_zmq:simple_decap_msg(Msg).
+    ezmq:simple_decap_msg(Msg).
 
-idle(check, {send, _Msg}, #gen_zmq_socket{transports = []}, _State) ->
+idle(check, {send, _Msg}, #ezmq_socket{transports = []}, _State) ->
     {queue, block};
-idle(check, {send, _Msg}, #gen_zmq_socket{transports = [Head|_]}, _State) ->
+idle(check, {send, _Msg}, #ezmq_socket{transports = [Head|_]}, _State) ->
     {ok, Head};
 idle(check, _, _MqSState, _State) ->
     {error, fsm};
@@ -57,7 +57,7 @@ idle(do, {deliver_send, abort}, MqSState, State) ->
     {next_state, idle, MqSState, State};
 idle(do, {deliver_send, Transport}, MqSState, State) ->
     State1 = State#state{last_send = Transport},
-    MqSState1 = gen_zmq:lb(Transport, MqSState),
+    MqSState1 = ezmq:lb(Transport, MqSState),
     {next_state, pending, MqSState1, State1};
 
 idle(do, queue_send, MqSState, State) ->
@@ -65,9 +65,9 @@ idle(do, queue_send, MqSState, State) ->
 idle(do, _, _MqSState, _State) ->
     {error, fsm}.
 
-send_queued(check, {send, _Msg}, #gen_zmq_socket{transports = []}, _State) ->
+send_queued(check, {send, _Msg}, #ezmq_socket{transports = []}, _State) ->
     {queue, block};
-send_queued(check, dequeue_send, #gen_zmq_socket{transports = [Head|_]}, _State) ->
+send_queued(check, dequeue_send, #ezmq_socket{transports = [Head|_]}, _State) ->
     {ok, Head};
 send_queued(check, dequeue_send, _MqSState, _State) ->
     keep;
@@ -78,7 +78,7 @@ send_queued(do, {deliver_send, abort}, MqSState, State) ->
     {next_state, idle, MqSState, State};
 send_queued(do, {deliver_send, Transport}, MqSState, State) ->
     State1 = State#state{last_send = Transport},
-    MqSState1 = gen_zmq:lb(Transport, MqSState),
+    MqSState1 = ezmq:lb(Transport, MqSState),
     {next_state, pending, MqSState1, State1};
 send_queued(do, _, _MqSState, _State) ->
     {error, fsm}.

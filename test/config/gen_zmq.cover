@@ -1,5 +1,0 @@
-{incl_mods, [gen_zmq, gen_zmq_socket_fsm,
-	     gen_zmq_socket_req, gen_zmq_socket_rep,
-	     gen_zmq_socket_dealer, gen_zmq_socket_router,
-	     gen_zmq_socket_pub, gen_zmq_socket_sub,
-	     gen_zmq_link, gen_zmq_frame]}.

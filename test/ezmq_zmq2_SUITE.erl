@@ -2,7 +2,7 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
--module(gen_zmq_zmq2_SUITE).
+-module(ezmq_zmq2_SUITE).
 
 -compile(export_all).
 
@@ -10,66 +10,66 @@
 
 reqrep_tcp_test_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq/3, "tcp://127.0.0.1:5555", {127,0,0,1}, 5555, req, rep, active, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq/3, "tcp://127.0.0.1:5555", {127,0,0,1}, 5555, req, rep, active, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq/3, "tcp://127.0.0.1:5555", {127,0,0,1}, 5555, req, rep, active, 3).
 reqrep_tcp_test_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq/3, "tcp://127.0.0.1:5556", {127,0,0,1}, 5556, req, rep, passive, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq/3, "tcp://127.0.0.1:5556", {127,0,0,1}, 5556, req, rep, passive, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq/3, "tcp://127.0.0.1:5556", {127,0,0,1}, 5556, req, rep, passive, 3).
 
 reqrep_tcp_id_test_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq/3, "tcp://127.0.0.1:5555", {127,0,0,1}, 5555, req, "reqrep_tcp_id_test_active_req", rep, "reqrep_tcp_id_test_active_rep", active, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq/3, "tcp://127.0.0.1:5555", {127,0,0,1}, 5555, req, "reqrep_tcp_id_test_active_req", rep, "reqrep_tcp_id_test_active_rep", active, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq/3, "tcp://127.0.0.1:5555", {127,0,0,1}, 5555, req, "reqrep_tcp_id_test_active_req", rep, "reqrep_tcp_id_test_active_rep", active, 3).
 reqrep_tcp_id_test_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq/3, "tcp://127.0.0.1:5556", {127,0,0,1}, 5556, req, "reqrep_tcp_id_test_passive_req", rep, "reqrep_tcp_id_test_passive_rep", passive, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq/3, "tcp://127.0.0.1:5556", {127,0,0,1}, 5556, req, "reqrep_tcp_id_test_passive_req", rep, "reqrep_tcp_id_test_passive_rep", passive, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq/3, "tcp://127.0.0.1:5556", {127,0,0,1}, 5556, req, "reqrep_tcp_id_test_passive_req", rep, "reqrep_tcp_id_test_passive_rep", passive, 3).
 
 reqrep_tcp_large_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq/3, "tcp://127.0.0.1:5557", {127,0,0,1}, 5557, req, rep, active, 256),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq/3, "tcp://127.0.0.1:5557", {127,0,0,1}, 5557, req, rep, active, 256).
+    basic_tests_ezmq(fun ping_pong_ezmq/3, "tcp://127.0.0.1:5557", {127,0,0,1}, 5557, req, rep, active, 256).
 reqrep_tcp_large_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq/3, "tcp://127.0.0.1:5558", {127,0,0,1}, 5558, req, rep, passive, 256),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq/3, "tcp://127.0.0.1:5558", {127,0,0,1}, 5558, req, rep, passive, 256).
+    basic_tests_ezmq(fun ping_pong_ezmq/3, "tcp://127.0.0.1:5558", {127,0,0,1}, 5558, req, rep, passive, 256).
 
 dealerrep_tcp_test_active(_Config) ->
     basic_tests_erlzmq(fun dealer_ping_pong_erlzmq/3, "tcp://127.0.0.1:5559", {127,0,0,1}, 5559, dealer, rep, active, 4),
-    basic_tests_gen_zmq(fun dealer_ping_pong_gen_zmq/3, "tcp://127.0.0.1:5559", {127,0,0,1}, 5559, dealer, rep, active, 4).
+    basic_tests_ezmq(fun dealer_ping_pong_ezmq/3, "tcp://127.0.0.1:5559", {127,0,0,1}, 5559, dealer, rep, active, 4).
 dealerrep_tcp_test_passive(_Config) ->
     basic_tests_erlzmq(fun dealer_ping_pong_erlzmq/3, "tcp://127.0.0.1:5560", {127,0,0,1}, 5560, dealer, rep, passive, 3),
-    basic_tests_gen_zmq(fun dealer_ping_pong_gen_zmq/3, "tcp://127.0.0.1:5560", {127,0,0,1}, 5560, dealer, rep, passive, 3).
+    basic_tests_ezmq(fun dealer_ping_pong_ezmq/3, "tcp://127.0.0.1:5560", {127,0,0,1}, 5560, dealer, rep, passive, 3).
 
 dealerrep_tcp_id_test_active(_Config) ->
     basic_tests_erlzmq(fun dealer_ping_pong_erlzmq/3, "tcp://127.0.0.1:5559", {127,0,0,1}, 5559, dealer, "dealerrep_tcp_id_test_active_dealer", rep, "dealerrep_tcp_id_test_active_rep", active, 4),
-    basic_tests_gen_zmq(fun dealer_ping_pong_gen_zmq/3, "tcp://127.0.0.1:5559", {127,0,0,1}, 5559, dealer, "dealerrep_tcp_id_test_active_dealer", rep, "dealerrep_tcp_id_test_active_rep", active, 4).
+    basic_tests_ezmq(fun dealer_ping_pong_ezmq/3, "tcp://127.0.0.1:5559", {127,0,0,1}, 5559, dealer, "dealerrep_tcp_id_test_active_dealer", rep, "dealerrep_tcp_id_test_active_rep", active, 4).
 dealerrep_tcp_id_test_passive(_Config) ->
     basic_tests_erlzmq(fun dealer_ping_pong_erlzmq/3, "tcp://127.0.0.1:5560", {127,0,0,1}, 5560, dealer, "dealerrep_tcp_id_test_passive_dealer", rep, "dealerrep_tcp_id_test_passive_rep", passive, 3),
-    basic_tests_gen_zmq(fun dealer_ping_pong_gen_zmq/3, "tcp://127.0.0.1:5560", {127,0,0,1}, 5560, dealer, "dealerrep_tcp_id_test_passive_dealer", rep, "dealerrep_tcp_id_test_passive_rep", passive, 3).
+    basic_tests_ezmq(fun dealer_ping_pong_ezmq/3, "tcp://127.0.0.1:5560", {127,0,0,1}, 5560, dealer, "dealerrep_tcp_id_test_passive_dealer", rep, "dealerrep_tcp_id_test_passive_rep", passive, 3).
 
 reqdealer_tcp_test_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_dealer/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, dealer, active, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_dealer/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, dealer, active, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_dealer/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, dealer, active, 3).
 reqdealer_tcp_test_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_dealer/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, dealer, passive, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_dealer/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, dealer, passive, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_dealer/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, dealer, passive, 3).
 
 reqdealer_tcp_id_test_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_dealer/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, "reqdealer_tcp_test_active_req",  dealer, "reqdealer_tcp_test_active_dealer",  active, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_dealer/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, "reqdealer_tcp_test_active_req",  dealer, "reqdealer_tcp_test_active_dealer",  active, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_dealer/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, "reqdealer_tcp_test_active_req",  dealer, "reqdealer_tcp_test_active_dealer",  active, 3).
 reqdealer_tcp_id_test_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_dealer/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, "reqdealer_tcp_test_passive_req",  dealer, "reqdealer_tcp_test_passive_dealer",  passive, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_dealer/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, "reqdealer_tcp_test_passive_req",  dealer, "reqdealer_tcp_test_passive_dealer",  passive, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_dealer/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, "reqdealer_tcp_test_passive_req",  dealer, "reqdealer_tcp_test_passive_dealer",  passive, 3).
 
 reqrouter_tcp_test_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_router/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, router, active, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_router/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, router, active, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_router/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, router, active, 3).
 reqrouter_tcp_test_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_router/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, router, passive, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_router/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, router, passive, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_router/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, router, passive, 3).
 
 reqrouter_tcp_id_test_active(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_router/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, "reqrouter_tcp_test_active_req",  router, "reqrouter_tcp_test_active_router",  active, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_router/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, "reqrouter_tcp_test_active_req",  router, "reqrouter_tcp_test_active_router",  active, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_router/3, "tcp://127.0.0.1:5561", {127,0,0,1}, 5561, req, "reqrouter_tcp_test_active_req",  router, "reqrouter_tcp_test_active_router",  active, 3).
 reqrouter_tcp_id_test_passive(_Config) ->
     basic_tests_erlzmq(fun ping_pong_erlzmq_router/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, "reqrouter_tcp_test_passive_req",  router, "reqrouter_tcp_test_passive_router",  passive, 3),
-    basic_tests_gen_zmq(fun ping_pong_gen_zmq_router/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, "reqrouter_tcp_test_passive_req",  router, "reqrouter_tcp_test_passive_router",  passive, 3).
+    basic_tests_ezmq(fun ping_pong_ezmq_router/3, "tcp://127.0.0.1:5562", {127,0,0,1}, 5562, req, "reqrouter_tcp_test_passive_req",  router, "reqrouter_tcp_test_passive_router",  passive, 3).
 
 create_bound_pair_erlzmq(Ctx, Type1, Type2, Mode, Transport, IP, Port) ->
     create_bound_pair_erlzmq(Ctx, Type1, [], Type2, [], Mode, Transport, IP, Port).
@@ -87,26 +87,26 @@ create_bound_pair_erlzmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port)
             false
     end,
     {ok, S1} = erlzmq:socket(Ctx, [Type1, {active, Active}]),
-    {ok, S2} = gen_zmq:socket([{type, Type2}, {active, Active}, {identity,Id2}]),
+    {ok, S2} = ezmq:socket([{type, Type2}, {active, Active}, {identity,Id2}]),
     ok = erlzmq_identity(S1, Id1),
     ok = erlzmq:bind(S1, Transport),
-    ok = gen_zmq:connect(S2, IP, Port, []),
+    ok = ezmq:connect(S2, IP, Port, []),
     {S1, S2}.
 
-create_bound_pair_gen_zmq(Ctx, Type1, Type2, Mode, Transport, IP, Port) ->
-    create_bound_pair_gen_zmq(Ctx, Type1, [], Type2, [], Mode, Transport, IP, Port).
+create_bound_pair_ezmq(Ctx, Type1, Type2, Mode, Transport, IP, Port) ->
+    create_bound_pair_ezmq(Ctx, Type1, [], Type2, [], Mode, Transport, IP, Port).
 
-create_bound_pair_gen_zmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port) ->
+create_bound_pair_ezmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port) ->
     Active = if
         Mode =:= active ->
             true;
         Mode =:= passive ->
             false
     end,
-    {ok, S1} = gen_zmq:socket([{type, Type1}, {active, Active}, {identity,Id1}]),
+    {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}, {identity,Id1}]),
     {ok, S2} = erlzmq:socket(Ctx, [Type2, {active, Active}]),
     ok = erlzmq_identity(S2, Id2),
-    ok = gen_zmq:bind(S1, Port, []),
+    ok = ezmq:bind(S1, Port, []),
     ok = erlzmq:connect(S2, Transport),
     {S1, S2}.
 
@@ -140,14 +140,14 @@ ping_pong_erlzmq({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S2, [Msg,Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, [Msg]),
+    ok = ezmq:send(S2, [Msg]),
     assert_mbox({zmq, S1, Msg, []}),
 
     ok = erlzmq:send(S1, Msg),
     assert_mbox({zmq, S2, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, [Msg]),
+    ok = ezmq:send(S2, [Msg]),
     assert_mbox({zmq, S1, Msg, []}),
     assert_mbox_empty(),
 
@@ -155,16 +155,16 @@ ping_pong_erlzmq({S1, S2}, Msg, active) ->
     
 ping_pong_erlzmq({S1, S2}, Msg, passive) ->
     ok = erlzmq:send(S1, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S2),
-    ok = gen_zmq:send(S2, [Msg]),
+    {ok, [Msg]} = ezmq:recv(S2),
+    ok = ezmq:send(S2, [Msg]),
     {ok, Msg} = erlzmq:recv(S1),
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-    {ok, [Msg,Msg]} = gen_zmq:recv(S2),
+    {ok, [Msg,Msg]} = ezmq:recv(S2),
     ok.
 
-ping_pong_gen_zmq({S1, S2}, Msg, active) ->
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+ping_pong_ezmq({S1, S2}, Msg, active) ->
+    ok = ezmq:send(S1, [Msg,Msg]),
     assert_mbox({zmq, S2, Msg, [rcvmore]}),
     assert_mbox({zmq, S2, Msg, []}),
     assert_mbox_empty(),
@@ -173,7 +173,7 @@ ping_pong_gen_zmq({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S1, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S1, [Msg]),
+    ok = ezmq:send(S1, [Msg]),
     assert_mbox({zmq, S2, Msg, []}),
     assert_mbox_empty(),
 
@@ -184,12 +184,12 @@ ping_pong_gen_zmq({S1, S2}, Msg, active) ->
 
     ok;
     
-ping_pong_gen_zmq({S1, S2}, Msg, passive) ->
-    ok = gen_zmq:send(S1, [Msg]),
+ping_pong_ezmq({S1, S2}, Msg, passive) ->
+    ok = ezmq:send(S1, [Msg]),
     {ok, Msg} = erlzmq:recv(S2),
     ok = erlzmq:send(S2, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S1),
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+    {ok, [Msg]} = ezmq:recv(S1),
+    ok = ezmq:send(S1, [Msg,Msg]),
     {ok, Msg} = erlzmq:recv(S2),
     {ok, Msg} = erlzmq:recv(S2),
     ok.
@@ -200,14 +200,14 @@ ping_pong_erlzmq_dealer({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S2, [Msg,Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, [Msg]),
+    ok = ezmq:send(S2, [Msg]),
     assert_mbox({zmq, S1, Msg, []}),
 
     ok = erlzmq:send(S1, Msg),
     assert_mbox({zmq, S2, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, [Msg]),
+    ok = ezmq:send(S2, [Msg]),
     assert_mbox({zmq, S1, Msg, []}),
     assert_mbox_empty(),
 
@@ -215,16 +215,16 @@ ping_pong_erlzmq_dealer({S1, S2}, Msg, active) ->
     
 ping_pong_erlzmq_dealer({S1, S2}, Msg, passive) ->
     ok = erlzmq:send(S1, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S2),
-    ok = gen_zmq:send(S2, [Msg]),
+    {ok, [Msg]} = ezmq:recv(S2),
+    ok = ezmq:send(S2, [Msg]),
     {ok, Msg} = erlzmq:recv(S1),
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-    {ok, [Msg,Msg]} = gen_zmq:recv(S2),
+    {ok, [Msg,Msg]} = ezmq:recv(S2),
     ok.
 
-ping_pong_gen_zmq_dealer({S1, S2}, Msg, active) ->
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+ping_pong_ezmq_dealer({S1, S2}, Msg, active) ->
+    ok = ezmq:send(S1, [Msg,Msg]),
     assert_mbox({zmq, S2, <<>>, [rcvmore]}),
     assert_mbox({zmq, S2, Msg, [rcvmore]}),
     assert_mbox({zmq, S2, Msg, []}),
@@ -235,7 +235,7 @@ ping_pong_gen_zmq_dealer({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S1, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S1, [Msg]),
+    ok = ezmq:send(S1, [Msg]),
     assert_mbox({zmq, S2, <<>>, [rcvmore]}),
     assert_mbox({zmq, S2, Msg, []}),
     assert_mbox_empty(),
@@ -248,14 +248,14 @@ ping_pong_gen_zmq_dealer({S1, S2}, Msg, active) ->
 
     ok;
     
-ping_pong_gen_zmq_dealer({S1, S2}, Msg, passive) ->
-    ok = gen_zmq:send(S1, [Msg]),
+ping_pong_ezmq_dealer({S1, S2}, Msg, passive) ->
+    ok = ezmq:send(S1, [Msg]),
     {ok, <<>>} = erlzmq:recv(S2),
     {ok, Msg} = erlzmq:recv(S2),
     ok = erlzmq:send(S2, <<>>, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S1),
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+    {ok, [Msg]} = ezmq:recv(S1),
+    ok = ezmq:send(S1, [Msg,Msg]),
     {ok, <<>>} = erlzmq:recv(S2),
     {ok, Msg} = erlzmq:recv(S2),
     {ok, Msg} = erlzmq:recv(S2),
@@ -269,7 +269,7 @@ dealer_ping_pong_erlzmq({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S2, [Msg,Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, [Msg]),
+    ok = ezmq:send(S2, [Msg]),
     assert_mbox({zmq, S1, <<>>, [rcvmore]}),
     assert_mbox({zmq, S1, Msg, []}),
     assert_mbox_empty(),
@@ -279,7 +279,7 @@ dealer_ping_pong_erlzmq({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S2, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, [Msg]),
+    ok = ezmq:send(S2, [Msg]),
     assert_mbox({zmq, S1, <<>>, [rcvmore]}),
     assert_mbox({zmq, S1, Msg, []}),
     assert_mbox_empty(),
@@ -289,14 +289,14 @@ dealer_ping_pong_erlzmq({S1, S2}, Msg, active) ->
 dealer_ping_pong_erlzmq({S1, S2}, Msg, passive) ->
     ok = erlzmq:send(S1, <<>>, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S2),
-    ok = gen_zmq:send(S2, [Msg]),
+    {ok, [Msg]} = ezmq:recv(S2),
+    ok = ezmq:send(S2, [Msg]),
     {ok, <<>>} = erlzmq:recv(S1),
     {ok, Msg} = erlzmq:recv(S1),
     ok = erlzmq:send(S1, <<>>, [sndmore]),
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-    {ok, [Msg,Msg]} = gen_zmq:recv(S2),
+    {ok, [Msg,Msg]} = ezmq:recv(S2),
     ok.
 
 dealer_recv_loop() ->
@@ -309,8 +309,8 @@ dealer_recv_loop() ->
             ct:fail(timeout)
     end.
 
-dealer_ping_pong_gen_zmq({S1, S2}, Msg, active) ->
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+dealer_ping_pong_ezmq({S1, S2}, Msg, active) ->
+    ok = ezmq:send(S1, [Msg,Msg]),
     assert_mbox({zmq, S2, Msg, [rcvmore]}),
     assert_mbox({zmq, S2, Msg, []}),
     assert_mbox_empty(),
@@ -319,7 +319,7 @@ dealer_ping_pong_gen_zmq({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S1, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S1, [Msg]),
+    ok = ezmq:send(S1, [Msg]),
     assert_mbox({zmq, S2, Msg, []}),
     assert_mbox_empty(),
 
@@ -327,12 +327,12 @@ dealer_ping_pong_gen_zmq({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S1, [Msg]}),
     ok;
     
-dealer_ping_pong_gen_zmq({S1, S2}, Msg, passive) ->
-    ok = gen_zmq:send(S1, [Msg]),
+dealer_ping_pong_ezmq({S1, S2}, Msg, passive) ->
+    ok = ezmq:send(S1, [Msg]),
     {ok, Msg} = erlzmq:recv(S2),
     ok = erlzmq:send(S2, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S1),
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+    {ok, [Msg]} = ezmq:recv(S1),
+    ok = ezmq:send(S1, [Msg,Msg]),
     {ok, Msg} = erlzmq:recv(S2),
     {ok, Msg} = erlzmq:recv(S2),
     ok.
@@ -342,11 +342,11 @@ ping_pong_erlzmq_router({S1, S2}, Msg, active) ->
     ok = erlzmq:send(S1, Msg),
     %% {zmq, S2, {Id,[Msg,Msg]}} = 
     Id = assert_mbox_match({{zmq, S2, {'$1',[Msg,Msg]}},[], ['$1']}),
-    ct:pal("gen_zmq router ID: ~p~n", [Id]),
+    ct:pal("ezmq router ID: ~p~n", [Id]),
     io:format("Id: ~w~n", [Id]),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, {Id, [Msg]}),
+    ok = ezmq:send(S2, {Id, [Msg]}),
     assert_mbox({zmq, S1, Msg, []}),
     assert_mbox_empty(),
 
@@ -354,7 +354,7 @@ ping_pong_erlzmq_router({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S2, {Id, [Msg]}}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S2, {Id, [Msg]}),
+    ok = ezmq:send(S2, {Id, [Msg]}),
     assert_mbox({zmq, S1, Msg, []}),
     assert_mbox_empty(),
 
@@ -362,17 +362,17 @@ ping_pong_erlzmq_router({S1, S2}, Msg, active) ->
    
 ping_pong_erlzmq_router({S1, S2}, Msg, passive) ->
     ok = erlzmq:send(S1, Msg),
-    {ok, {Id, [Msg]}} = gen_zmq:recv(S2),
-    ct:pal("gen_zmq router ID: ~p~n", [Id]),
-    ok = gen_zmq:send(S2, {Id, [Msg]}),
+    {ok, {Id, [Msg]}} = ezmq:recv(S2),
+    ct:pal("ezmq router ID: ~p~n", [Id]),
+    ok = ezmq:send(S2, {Id, [Msg]}),
     {ok, Msg} = erlzmq:recv(S1),
     ok = erlzmq:send(S1, Msg, [sndmore]),
     ok = erlzmq:send(S1, Msg),
-    {ok, {Id, [Msg,Msg]}} = gen_zmq:recv(S2),
+    {ok, {Id, [Msg,Msg]}} = ezmq:recv(S2),
     ok.
 
-ping_pong_gen_zmq_router({S1, S2}, Msg, active) ->
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+ping_pong_ezmq_router({S1, S2}, Msg, active) ->
+    ok = ezmq:send(S1, [Msg,Msg]),
     Id = assert_mbox_match({{zmq, S2, '$1', [rcvmore]},[], ['$1']}),
     ct:pal("erlzmq router ID: ~p~n", [Id]),
     assert_mbox({zmq, S2, <<>>, [rcvmore]}),
@@ -386,7 +386,7 @@ ping_pong_gen_zmq_router({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S1, [Msg]}),
     assert_mbox_empty(),
 
-    ok = gen_zmq:send(S1, [Msg]),
+    ok = ezmq:send(S1, [Msg]),
     assert_mbox({zmq, S2, Id, [rcvmore]}),
     assert_mbox({zmq, S2, <<>>, [rcvmore]}),
     assert_mbox({zmq, S2, Msg, []}),
@@ -401,8 +401,8 @@ ping_pong_gen_zmq_router({S1, S2}, Msg, active) ->
 
     ok;
     
-ping_pong_gen_zmq_router({S1, S2}, Msg, passive) ->
-    ok = gen_zmq:send(S1, [Msg]),
+ping_pong_ezmq_router({S1, S2}, Msg, passive) ->
+    ok = ezmq:send(S1, [Msg]),
     {ok, Id} = erlzmq:recv(S2),
     ct:pal("erlzmq router ID: ~p~n", [Id]),
     {ok, <<>>} = erlzmq:recv(S2),
@@ -410,8 +410,8 @@ ping_pong_gen_zmq_router({S1, S2}, Msg, passive) ->
     ok = erlzmq:send(S2, Id, [sndmore]),
     ok = erlzmq:send(S2, <<>>, [sndmore]),
     ok = erlzmq:send(S2, Msg),
-    {ok, [Msg]} = gen_zmq:recv(S1),
-    ok = gen_zmq:send(S1, [Msg,Msg]),
+    {ok, [Msg]} = ezmq:recv(S1),
+    ok = ezmq:send(S1, [Msg,Msg]),
     {ok, Id} = erlzmq:recv(S2),
     {ok, <<>>} = erlzmq:recv(S2),
     {ok, Msg} = erlzmq:recv(S2),
@@ -427,25 +427,25 @@ basic_tests_erlzmq(Fun, Transport, IP, Port, Type1, Id1, Type2, Id2, Mode, Size)
     Msg = list_to_binary(string:chars($X, Size)),
     Fun({S1, S2}, Msg, Mode),
     ok = erlzmq:close(S1),
-    ok = gen_zmq:close(S2),
+    ok = ezmq:close(S2),
     ok = erlzmq:term(C).
 
-basic_tests_gen_zmq(Fun, Transport, IP, Port, Type1, Type2, Mode, Size) ->
-    basic_tests_gen_zmq(Fun, Transport, IP, Port, Type1, [], Type2, [], Mode, Size).
+basic_tests_ezmq(Fun, Transport, IP, Port, Type1, Type2, Mode, Size) ->
+    basic_tests_ezmq(Fun, Transport, IP, Port, Type1, [], Type2, [], Mode, Size).
 
-basic_tests_gen_zmq(Fun, Transport, IP, Port, Type1, Id1, Type2, Id2, Mode, Size) ->
+basic_tests_ezmq(Fun, Transport, IP, Port, Type1, Id1, Type2, Id2, Mode, Size) ->
     {ok, C} = erlzmq:context(1),
-    {S1, S2} = create_bound_pair_gen_zmq(C, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port),
+    {S1, S2} = create_bound_pair_ezmq(C, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port),
     Msg = list_to_binary(string:chars($X, Size)),
     Fun({S1, S2}, Msg, Mode),
-    ok = gen_zmq:close(S1),
+    ok = ezmq:close(S1),
     ok = erlzmq:close(S2),
     ok = erlzmq:term(C).
 
 init_per_suite(Config) ->
     application:start(sasl),
     application:start(gen_listener_tcp),
-    application:start(gen_zmq),
+    application:start(ezmq),
     Config.
 
 end_per_suite(Config) ->

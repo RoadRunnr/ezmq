@@ -2,10 +2,10 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
--module(gen_zmq_tcp_socket).
+-module(ezmq_tcp_socket).
 -behaviour(gen_listener_tcp).
 
--include("gen_zmq_debug.hrl").
+-include("ezmq_debug.hrl").
 
 -define(TCP_PORT, 5555).
 -define(TCP_OPTS, [binary, inet,
@@ -47,9 +47,9 @@ init([MqSocket, Identity, Port, Opts]) ->
     {ok, {Port, Opts}, {MqSocket, Identity}}.
 
 handle_accept(Sock, State = {MqSocket, Identity}) ->
-    case gen_zmq_link:start_connection() of
+    case ezmq_link:start_connection() of
         {ok, Pid} ->
-            gen_zmq_link:accept(MqSocket, Identity, Pid, Sock);
+            ezmq_link:accept(MqSocket, Identity, Pid, Sock);
         _ ->
             error_logger:error_report([{event, accept_failed}]),
             gen_tcp:close(Sock)
@@ -66,7 +66,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, _State) ->
-    ?DEBUG("gen_zmq_tcp_socket terminate on ~p", [Reason]),
+    ?DEBUG("ezmq_tcp_socket terminate on ~p", [Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

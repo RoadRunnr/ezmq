@@ -1,4 +1,4 @@
-{application, gen_zmq,
+{application, ezmq,
  [
   {description, "native Erlang 0MQ implementation"},
   {vsn, "0.1"},
@@ -10,6 +10,6 @@
                   gen_socket,
                   gen_listener_tcp
                  ]},
-  {mod, { gen_zmq_app, []}},
+  {mod, { ezmq_app, []}},
   {env, []}
  ]}.
