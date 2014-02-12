@@ -8,6 +8,6 @@ otp_release:
 script:
   - rebar get-deps
   - rebar compile 
-  - rebar eunit -v skip_deps=true
+  - rebar ct -v skip_deps=true
 notifications:
   email: false 
