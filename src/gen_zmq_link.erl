@@ -27,7 +27,7 @@
           identity = <<>>           :: binary(),
           remote_id = <<>>          :: binary(),
           socket,
-          version = 0,
+          version = {1,0},
           frames = [],
           pending = <<>>
          }).
@@ -125,7 +125,8 @@ setup({accept, MqSocket, Identity, Socket}, State) ->
     ?DEBUG("got setup~n"),
     NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
     ?DEBUG("NewState: ~p~n", [NewState]),
-    send_frames([Identity], {next_state, open, NewState, ?CONNECT_TIMEOUT});
+    Packet = gen_zmq_frame:encode_greeting(State#state.version, undefined, Identity),
+    send_packet(Packet, {next_state, open, NewState, ?CONNECT_TIMEOUT});
 
 setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
     ?DEBUG("got connect: ~w, ~w~n", [Address, Port]),
@@ -168,16 +169,15 @@ connecting(timeout, State = #state{mqsocket = MqSocket}) ->
     gen_zmq:deliver_connect(MqSocket, {error, timeout}),
     {stop, normal, State};
 
-connecting({in, Frames}, State = #state{mqsocket = MqSocket, identity = Identity})
-  when length(Frames) == 1 ->
-    ?DEBUG("Frames in connecting: ~p~n", [Frames]),
-    [RemoteId0] = gen_zmq:simple_decap_msg(Frames),
+connecting({greeting, Ver, _SocketType, RemoteId0},
+           State = #state{mqsocket = MqSocket, identity = Identity}) ->
     RemoteId = gen_zmq:remote_id_assign(RemoteId0),
     gen_zmq:deliver_connect(MqSocket, {ok, RemoteId}),
-    send_frames([Identity], {next_state, connected, State #state{remote_id = RemoteId}});
+    Packet = gen_zmq_frame:encode_greeting(State#state.version, undefined, Identity),
+    send_packet(Packet, {next_state, connected, State #state{remote_id = RemoteId, version = Ver}});
 
-connecting({in, Frames}, State = #state{mqsocket = MqSocket}) ->
-    ?DEBUG("Invalid frames in connecting: ~p~n", [Frames]),
+connecting(Msg, State = #state{mqsocket = MqSocket}) ->
+    ?DEBUG("Invalid message in connecting: ~p~n", [Msg]),
     gen_zmq:deliver_connect(MqSocket, {error, data}),
     {stop, normal, State}.
 
@@ -185,16 +185,14 @@ open(timeout, State) ->
     ?DEBUG("timeout in open~n"),
     {stop, normal, State};
 
-open({in, Frames}, #state{mqsocket = MqSocket} = State)
-  when length(Frames) == 1 ->
-    ?DEBUG("Frames in open: ~p~n", [Frames]),
-    [RemoteId0] = gen_zmq:simple_decap_msg(Frames),
+open({greeting, Ver, _SocketType, RemoteId0},
+     #state{mqsocket = MqSocket} = State) ->
     RemoteId = gen_zmq:remote_id_assign(RemoteId0),
     gen_zmq:deliver_accept(MqSocket, RemoteId),
-    {next_state, connected, State#state{remote_id = RemoteId}};
+    {next_state, connected, State#state{remote_id = RemoteId, version = Ver}};
 
-open({in, Frames}, State) ->
-    ?DEBUG("Invalid frames in open: ~p~n", [Frames]),
+open(Msg, State) ->
+    ?DEBUG("Invalid message in open: ~p~n", [Msg]),
     {stop, normal, State}.
 
 connected(timeout, State) ->
@@ -298,29 +296,42 @@ handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNex
     ok = inet:setopts(Socket, [{active, once}]),
     ProcessStateNext;
 
+handle_data(StateName, #state{socket = Socket, pending = Pending} = State, ProcessStateNext)
+  when StateName =:= connecting;
+       StateName =:= open ->
+    {Msg, DataRest} = gen_zmq_frame:decode_greeting(Pending),
+    State1 = State#state{pending = DataRest},
+    ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
+
+    case Msg of
+        more ->
+            ok = inet:setopts(Socket, [{active, once}]),
+            setelement(3, ProcessStateNext, State1);
+
+        invalid ->
+            %% assume that this is a greeting for a version that we don't understand,
+            %% fall back to ZMTP 1.0
+            FakeMsg = {greeting, {1,0}, undefined, <<>>},
+            Reply = ?MODULE:StateName(FakeMsg, State1),
+            handle_data_reply(Reply);
+
+        {greeting, _Ver, _SocketType, _Identity} ->
+            Reply = ?MODULE:StateName(Msg, State1),
+            handle_data_reply(Reply)
+    end;
+
 handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending} = State, ProcessStateNext) ->
     {Msg, DataRest} = gen_zmq_frame:decode(Ver, Pending),
     State1 = State#state{pending = DataRest},
     ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
 
     case Msg of
-	{_, _} when StateName =:= connecting ->
-	    %% FIXME: brutal hack, ZMTP 4.0 compat...
-            Frames = [{normal, <<>>}],
-            State2 = State1#state{frames = []},
-            ?DEBUG("handle_data: finale decoded: ~p~n", [Frames]),
-            Reply = exec_sync(Frames, StateName, State2),
-            ?DEBUG("handle_data: reply: ~p~n", [Reply]),
-            case element(1, Reply) of
-                next_state ->
-                    handle_data(element(2, Reply), element(3, Reply), Reply);
-                _ ->
-                    Reply
-            end;
-
         more ->
             ok = inet:setopts(Socket, [{active, once}]),
             setelement(3, ProcessStateNext, State1);
+
+        invalid ->
+            {stop, normal, State1};
 
         {true, Frame} ->
             State2 = State1#state{frames = [Frame|State1#state.frames]},
@@ -332,15 +343,9 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
             ?DEBUG("handle_data: finale decoded: ~p~n", [Frames]),
             Reply = exec_sync(Frames, StateName, State2),
             ?DEBUG("handle_data: reply: ~p~n", [Reply]),
-            case element(1, Reply) of
-                next_state ->
-                    handle_data(element(2, Reply), element(3, Reply), Reply);
-                _ ->
-                    Reply
-            end
+            handle_data_reply(Reply)
     end.
 
-    
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -382,11 +387,20 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 exec_sync(Msg, StateName, State) ->
     ?MODULE:StateName({in, Msg}, State).
 
+handle_data_reply(Reply)
+  when element(1, Reply) =:= next_state ->
+    handle_data(element(2, Reply), element(3, Reply), Reply);
+handle_data_reply(Reply) ->
+    Reply.
+
 send_frames(Frames, NextStateInfo) ->
+    Packet = gen_zmq_frame:encode(Frames),
+    send_packet(Packet, NextStateInfo).
+
+send_packet(Packet, NextStateInfo) ->
     State = element(3, NextStateInfo),
     Socket = State#state.socket,
 
-    Packet = gen_zmq_frame:encode(Frames),
     case gen_tcp:send(Socket, Packet) of
         ok ->
             ok = inet:setopts(Socket, [{active, once}]),
