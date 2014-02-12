@@ -10,7 +10,7 @@
 
 -else.
 
--define(DEBUG(FORMAT, DATA), (false andalso (DATA) orelse ok)).
--define(DEBUG(FORMAT), ok).
+-define(DEBUG(_FORMAT, _DATA), (ok)).
+-define(DEBUG(_FORMAT), ok).
 
 -endif.
