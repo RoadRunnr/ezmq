@@ -70,7 +70,7 @@ start_connection() ->
     ezmq_link_sup:start_connection().
 
 accept(MqSocket, Identity, Server, Socket) ->
-    gen_tcp:controlling_process(Socket, Server),
+    ok = gen_tcp:controlling_process(Socket, Server),
     gen_fsm:send_event(Server, {accept, MqSocket, Identity, Socket}).
 
 connect(Identity, Server, unix, Path, TcpOpts, Timeout) ->
@@ -176,8 +176,8 @@ connecting({greeting, Ver, _SocketType, RemoteId0},
     Packet = ezmq_frame:encode_greeting(State#state.version, undefined, Identity),
     send_packet(Packet, {next_state, connected, State #state{remote_id = RemoteId, version = Ver}});
 
-connecting(Msg, State = #state{mqsocket = MqSocket}) ->
-    ?DEBUG("Invalid message in connecting: ~p~n", [Msg]),
+connecting(_Msg, State = #state{mqsocket = MqSocket}) ->
+    ?DEBUG("Invalid message in connecting: ~p~n", [_Msg]),
     ezmq:deliver_connect(MqSocket, {error, data}),
     {stop, normal, State}.
 
@@ -191,16 +191,16 @@ open({greeting, Ver, _SocketType, RemoteId0},
     ezmq:deliver_accept(MqSocket, RemoteId),
     {next_state, connected, State#state{remote_id = RemoteId, version = Ver}};
 
-open(Msg, State) ->
-    ?DEBUG("Invalid message in open: ~p~n", [Msg]),
+open(_Msg, State) ->
+    ?DEBUG("Invalid message in open: ~p~n", [_Msg]),
     {stop, normal, State}.
 
 connected(timeout, State) ->
     ?DEBUG("timeout in connected~n"),
     {stop, normal, State};
 
-connected({in, [Head|Frames]}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
-    ?DEBUG("in connected Head: ~w, Frames: ~p~n", [Head, Frames]),
+connected({in, [_Head|Frames]}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
+    ?DEBUG("in connected Head: ~w, Frames: ~p~n", [_Head, Frames]),
     ezmq:deliver_recv(MqSocket, {RemoteId, Frames}),
     {next_state, connected, State};
 
