@@ -65,8 +65,8 @@ handle_cast(_Request, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(Reason, _State) ->
-    ?DEBUG("ezmq_tcp_socket terminate on ~p", [Reason]),
+terminate(_Reason, _State) ->
+    ?DEBUG("ezmq_tcp_socket terminate on ~p", [_Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

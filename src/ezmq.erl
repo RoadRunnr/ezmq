@@ -377,8 +377,8 @@ handle_cast({deliver_close, Transport}, State = #ezmq_socket{connecting = Connec
                  _ ->
                      check_send_queue(State2)
              end,
-    State4 = queue_run(State3),
-    ?DEBUG("DELIVER_CLOSE: ~p~n", [State4]),
+    _State4 = queue_run(State3),
+    ?DEBUG("DELIVER_CLOSE: ~p~n", [_State4]),
     {noreply, State3};
 
 handle_cast({deliver_recv, Transport, IdMsg}, State) ->
@@ -529,12 +529,15 @@ run_recv_q(State) ->
             State
     end.
 
+cond_cancel_timer(none) ->
+     ok;
+cond_cancel_timer(Ref) ->
+    _ = erlang:cancel_timer(Ref),
+    ok.
+
 %% send a specific message to the owner
 send_owner(Transport, IdMsg, #ezmq_socket{pending_recv = {From, Ref}} = State) ->
-    case Ref of
-        none -> ok;
-        _ -> erlang:cancel_timer(Ref)
-    end,
+    ok = cond_cancel_timer(Ref),
     State1 = State#ezmq_socket{pending_recv = none},
     gen_server:reply(From, {ok, ezmq_socket_fsm:decap_msg(Transport, IdMsg, State)}),
     ezmq_socket_fsm:do({deliver, Transport}, State1);
