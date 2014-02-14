@@ -17,21 +17,26 @@ bool(1) -> true.
 frame_type(0, 1) -> label;
 frame_type(_, _) -> normal.
 
-decode_greeting(Data = <<16#FF, Length:64/unsigned-integer, IDFlags:8/integer, Rest/binary>>) ->
+%% ZeroMQ RFC 13 says IDFlags should be 0x00 in the greeting, however the actuall
+%% libzmq2 implementation send 0x7E, so only insist on the LSB beeing zero
+
+decode_greeting(Data = <<16#FF, Length:64/unsigned-integer, _:7, IDFlags:1/integer, Rest/binary>>) ->
     decode_greeting({1,0}, Length, IDFlags, Rest, Data);
-decode_greeting(Data = <<Length:8/integer, IDFlags:8/integer, Rest/binary>>) ->
+decode_greeting(Data = <<Length:8/integer, _:7, IDFlags:1/integer, Rest/binary>>) ->
     decode_greeting({1,0}, Length, IDFlags, Rest, Data);
 decode_greeting(Data) ->
     {more, Data}.
 
-decode_greeting({1,0}, FrameLen, 16#00, Msg, Data) when size(Msg) < FrameLen - 1->
+decode_greeting({1,0}, FrameLen, 0, Msg, Data) when size(Msg) < FrameLen - 1->
     {more, Data};
-decode_greeting(Ver = {1,0}, FrameLen, 16#00, Msg, _Data) ->
+decode_greeting(Ver = {1,0}, FrameLen, 0, Msg, _Data) ->
     IDLen = FrameLen - 1,
     <<Identity:IDLen/bytes, Rem/binary>> = Msg,
     {{greeting, Ver, undefined, Identity}, Rem};
-decode_greeting({1,0}, _FrameLen, _IDFlags, _Msg, Data) ->
-    {invalid, Data}.
+decode_greeting({1,0}, FrameLen, _IDFlags, Msg, _Data) ->
+    IDLen = FrameLen - 1,
+    <<_:IDLen/bytes, Rem/binary>> = Msg,
+    {invalid, Rem}.
 
 decode(Ver, Data = <<16#FF, Length:64/unsigned-integer, Flags:8/bits, Rest/binary>>) ->
     decode(Ver, Length, Flags, Rest, Data);

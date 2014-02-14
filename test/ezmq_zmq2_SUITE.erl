@@ -90,7 +90,7 @@ create_bound_pair_erlzmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port)
     {ok, S2} = ezmq:socket([{type, Type2}, {active, Active}, {identity,Id2}]),
     ok = erlzmq_identity(S1, Id1),
     ok = erlzmq:bind(S1, Transport),
-    ok = ezmq:connect(S2, IP, Port, []),
+    ok = ezmq:connect(S2, tcp, IP, Port, []),
     {S1, S2}.
 
 create_bound_pair_ezmq(Ctx, Type1, Type2, Mode, Transport, IP, Port) ->
@@ -106,7 +106,7 @@ create_bound_pair_ezmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port) -
     {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}, {identity,Id1}]),
     {ok, S2} = erlzmq:socket(Ctx, [Type2, {active, Active}]),
     ok = erlzmq_identity(S2, Id2),
-    ok = ezmq:bind(S1, Port, []),
+    ok = ezmq:bind(S1, tcp, Port, []),
     ok = erlzmq:connect(S2, Transport),
     {S1, S2}.
 
@@ -450,6 +450,8 @@ init_per_suite(Config) ->
 
 end_per_suite(Config) ->
     Config.
+
+suite() -> [{timetrap, 60000}].
 
 all() ->
     case code:ensure_loaded(erlzmq) of

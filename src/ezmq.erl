@@ -14,7 +14,7 @@
 
 %% API scheduler
 -export([start_link/1, start/1, socket_link/1, socket/1]).
--export([bind/4, connect/4, connect/5, close/1]).
+-export([bind/4, connect/5, close/1]).
 -export([recv/1, recv/2]).
 -export([send/2]).
 -export([setopts/2]).
@@ -70,11 +70,7 @@ bind(Socket, tcp, Port, Opts) when ?port(Port) ->
     case Valid of
         {ok, _} -> gen_server:call(Socket, {bind, tcp, Port, Opts});
         Res     -> Res
-    end;
-
-bind(Socket, unix, Path, Opts) ->
-    %%TODO: socket options
-    gen_server:call(Socket, {bind, unix, Path, Opts}).
+    end.
 
 connect(Socket, tcp, Address, Port, Opts) when ?port(Port) ->
     Valid = validate_address(Address),
@@ -82,9 +78,6 @@ connect(Socket, tcp, Address, Port, Opts) when ?port(Port) ->
         {ok, _} -> gen_server:call(Socket, {connect, tcp, Address, Port, Opts});
         Res     -> Res
     end.
-
-connect(Socket, unix, Path, Opts) ->
-    gen_server:call(Socket, {connect, unix, Path, Opts}).
 
 close(Socket) ->
 	gen_server:call(Socket, close).
@@ -250,35 +243,10 @@ handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{identity = I
             {reply, Reply, MqSState}
     end;
 
-handle_call({bind, unix, Path, Opts}, _From, MqSState = #ezmq_socket{identity = Identity}) ->
-    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
-    ?DEBUG("bind: ~p~n", [TcpOpts0]),
-
-    {ok, Fd} = gen_socket:socket(unix, stream, 0),
-    case gen_socket:bind(Fd, gen_socket:sockaddr_unix(Path)) of
-        ok -> case ezmq_tcp_socket:start_link(Identity, 0, [{fd, Fd}|TcpOpts0]) of
-                  {ok, Pid} ->
-                      Listen = orddict:append(Pid, {unix, Path, Opts}, MqSState#ezmq_socket.listen_trans),
-                      {reply, ok, MqSState#ezmq_socket{listen_trans = Listen}};
-                  Reply ->
-                      {reply, Reply, MqSState}
-              end;
-        Reply ->
-            {reply, Reply, MqSState}
-    end;
-
 handle_call({connect, tcp, Address, Port, Opts}, _From, State) ->
     TcpOpts = [binary, inet, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
     Timeout = proplists:get_value(timeout, Opts, 5000),
     ConnectArgs = #cargs{family = tcp, address = Address, port = Port, tcpopts = TcpOpts,
-                         timeout = Timeout, failcnt = 0},
-    NewState = do_connect(ConnectArgs, State),
-    {reply, ok, NewState};
-
-handle_call({connect, unix, Path, Opts}, _From, State) ->
-    TcpOpts = [binary, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
-    Timeout = proplists:get_value(timeout, Opts, 5000),
-    ConnectArgs = #cargs{family = unix, address = Path, tcpopts = TcpOpts,
                          timeout = Timeout, failcnt = 0},
     NewState = do_connect(ConnectArgs, State),
     {reply, ok, NewState};
@@ -452,15 +420,6 @@ do_connect(ConnectArgs = #cargs{family = tcp}, MqSState = #ezmq_socket{identity 
            timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
     {ok, Transport} = ezmq_link:start_connection(),
     ezmq_link:connect(Identity, Transport, tcp, Address, Port, TcpOpts, Timeout),
-    Connecting = orddict:store(Transport, ConnectArgs, MqSState#ezmq_socket.connecting),
-    MqSState#ezmq_socket{connecting = Connecting};
-
-do_connect(ConnectArgs = #cargs{family = unix}, MqSState = #ezmq_socket{identity = Identity}) ->
-    ?DEBUG("starting connect: ~w~n", [ConnectArgs]),
-    #cargs{address = Path, tcpopts = TcpOpts,
-           timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
-    {ok, Transport} = ezmq_link:start_connection(),
-    ezmq_link:connect(Identity, Transport, unix, Path, TcpOpts, Timeout),
     Connecting = orddict:store(Transport, ConnectArgs, MqSState#ezmq_socket.connecting),
     MqSState#ezmq_socket{connecting = Connecting}.
 
