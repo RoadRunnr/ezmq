@@ -385,6 +385,8 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     Config.
 
+suite() -> [{timetrap, 60000}].
+
 all() ->
     [
      reqrep_tcp_test_active, reqrep_tcp_test_passive,
