@@ -276,7 +276,7 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
        StateName =:= open ->
     {Msg, DataRest} = ezmq_frame:decode_greeting(Pending),
     State1 = State#state{pending = DataRest},
-    ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
+    ?DEBUG("handle_info (greeting): decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
 
     case Msg of
         more ->
