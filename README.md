@@ -2,7 +2,7 @@ ezmq - ØMQ in pure Erlang
 ============================
 
 ezmq implements the ØMQ protocol in 100% pure Erlang.
-
+[![Build Status](https://travis-ci.org/zeromq/ezmq.png?branch=master)](https://travis-ci.org/zeromq/ezmq)
 Motivation
 ----------
 
