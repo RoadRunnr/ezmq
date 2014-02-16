@@ -13,11 +13,6 @@ reqrep_tcp_test_active(_Config) ->
 reqrep_tcp_test_passive(_Config) ->
     basic_tests({127,0,0,1}, 5557, req, rep, passive, 3).
 
-reqrep_unix_test_active(_Config) ->
-    basic_tests([0,"/tmp/reqrep_unix_test_active"], req, rep, active, 3).
-reqrep_unix_test_passive(_Config) ->
-    basic_tests([0,"/tmp/reqrep_unix_test_passive"], req, rep, passive, 3).
-
 reqrep_tcp_large_active(_Config) ->
     basic_tests({127,0,0,1}, 5556, req, rep, active, 256).
 reqrep_tcp_large_passive(_Config) ->
@@ -323,19 +318,6 @@ create_bound_pair(Type1, Type2, Mode, IP, Port) ->
     ok = ezmq:connect(S2, tcp, IP, Port, []),
     {S1, S2}.
 
-create_bound_pair(Type1, Type2, Mode, Path) ->
-    Active = if
-        Mode =:= active ->
-            true;
-        Mode =:= passive ->
-            false
-    end,
-    {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}]),
-    {ok, S2} = ezmq:socket([{type, Type2}, {active, Active}]),
-    ok = ezmq:bind(S1, unix, Path, []),
-    ok = ezmq:connect(S2, unix, Path, []),
-    {S1, S2}.
-
 %% assert that message queue is empty....
 assert_mbox_empty() ->
     receive
@@ -394,22 +376,16 @@ basic_tests(IP, Port, Type1, Type2, Mode, Size) ->
     ok = ezmq:close(S1),
     ok = ezmq:close(S2).
 
-basic_tests(Path, Type1, Type2, Mode, Size) ->
-    {S1, S2} = create_bound_pair(Type1, Type2, Mode, Path),
-    Msg = list_to_binary(string:chars($X, Size)),
-    ping_pong({S1, S2}, Msg, Mode),
-    ok = ezmq:close(S1),
-    ok = ezmq:close(S2).
-
 init_per_suite(Config) ->
     ok = application:start(sasl),
     ok = application:start(gen_listener_tcp),
-    ok = application:start(gen_socket),
     ok = application:start(ezmq),
     Config.
 
 end_per_suite(Config) ->
     Config.
+
+suite() -> [{timetrap, 60000}].
 
 all() ->
     [
@@ -424,6 +400,5 @@ all() ->
      dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout,
      basic_tests_rep_req, basic_tests_dealer, basic_tests_router,
      basic_tests_pub_sub,
-     shutdown_stress_test,
-     reqrep_unix_test_active, reqrep_unix_test_passive
+     shutdown_stress_test
     ].

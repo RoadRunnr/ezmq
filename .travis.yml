@@ -1,5 +1,7 @@
 language: erlang
 otp_release:
+   - 17.0-rc1
+   - R16B03-1
    - R16B03
    - R16B02
    - R16B01
@@ -8,8 +10,13 @@ otp_release:
    - R15B03
 
 script:
-  - rebar get-deps
-  - rebar compile
-  - rebar ct -v skip_deps=true
+  - rebar -C rebar.config.travis get-deps
+  - rebar -C rebar.config.travis compile
+  - rebar -C rebar.config.travis -v skip_deps=true ct
+  - 
+install:
+  - sudo apt-get install uuid-dev
+
 notifications:
-  email: false 
+  email: aschultz@tpip.net
+
