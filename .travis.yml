@@ -13,7 +13,6 @@ script:
   - rebar -C rebar.config.travis get-deps
   - rebar -C rebar.config.travis compile
   - rebar -C rebar.config.travis -v skip_deps=true ct
-  - make dialyzer
 install:
   - sudo apt-get install uuid-dev
 
