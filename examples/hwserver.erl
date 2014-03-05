@@ -10,11 +10,9 @@ main() ->
 	application:start(sasl),
 	application:start(gen_listener_tcp),
 	application:start(ezmq),
-	Opts = [{ip,{127,0,0,1}}],
 	Port = 5555,
-
 	{ok, Socket} = ezmq:start([{type, rep}]),
-	ezmq:bind(Socket, Port, Opts),
+	ezmq:bind(Socket, tcp, Port, []),
 	loop(Socket).
 
 loop(Socket) ->
