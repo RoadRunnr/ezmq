@@ -5,8 +5,6 @@
 -module(ezmq_tcp_socket).
 -behaviour(gen_listener_tcp).
 
--include("ezmq_debug.hrl").
-
 -define(TCP_PORT, 5555).
 -define(TCP_OPTS, [binary, inet,
                    {ip,           {127,0,0,1}},
@@ -66,7 +64,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
-    ?DEBUG("ezmq_tcp_socket terminate on ~p", [_Reason]),
+    lager:debug("ezmq_tcp_socket terminate on ~p", [_Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

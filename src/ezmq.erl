@@ -9,7 +9,6 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("ezmq_debug.hrl").
 -include("ezmq_internal.hrl").
 
 %% API scheduler
@@ -234,7 +233,7 @@ handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{identity = I
                    undefined -> TcpOpts0;
                    I -> [{ip, I}|TcpOpts0]
                end,
-    ?DEBUG("bind: ~p~n", [TcpOpts1]),
+    lager:debug("bind: ~p", [TcpOpts1]),
     case ezmq_tcp_socket:start_link(Identity, Port, TcpOpts1) of
         {ok, Pid} ->
             Listen = orddict:append(Pid, {tcp, Port, Opts}, MqSState#ezmq_socket.listen_trans),
@@ -308,7 +307,7 @@ handle_call({setopts, Opts}, _From, State) ->
 handle_cast({deliver_accept, Transport, RemoteId}, State) ->
     link(Transport),
     State1 = transports_activate(Transport, RemoteId, State),
-    ?DEBUG("DELIVER_ACCPET: ~p~n", [State1]),
+    lager:debug("DELIVER_ACCPET: ~p", [lager:pr(State1, ?MODULE)]),
     State2 = send_queue_run(State1),
     {noreply, State2};
 
@@ -323,7 +322,7 @@ handle_cast({deliver_connect, Transport, Reply}, State = #ezmq_socket{connecting
         {error, Reason} when Reason == eagain; Reason == ealready;
                              Reason == econnrefused; Reason == econnreset ->
             ConnectArgs = orddict:fetch(Transport, Connecting),
-            ?DEBUG("CArgs: ~w~n", [ConnectArgs]),
+            lager:debug("CArgs: ~w", [ConnectArgs]),
             erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = ConnectArgs#cargs.failcnt + 1}}),
             State2 = State#ezmq_socket{connecting = orddict:erase(Transport, Connecting)},
             {noreply, State2};
@@ -346,7 +345,7 @@ handle_cast({deliver_close, Transport}, State = #ezmq_socket{connecting = Connec
                      check_send_queue(State2)
              end,
     _State4 = queue_run(State3),
-    ?DEBUG("DELIVER_CLOSE: ~p~n", [_State4]),
+    lager:debug("DELIVER_CLOSE: ~p", [lager:pr(_State4, ?MODULE)]),
     {noreply, State3};
 
 handle_cast({deliver_recv, Transport, IdMsg}, State) ->
@@ -415,7 +414,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 do_connect(ConnectArgs = #cargs{family = tcp}, MqSState = #ezmq_socket{identity = Identity}) ->
-    ?DEBUG("starting connect: ~w~n", [ConnectArgs]),
+    lager:debug("starting connect: ~w", [ConnectArgs]),
     #cargs{address = Address, port = Port, tcpopts = TcpOpts,
            timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
     {ok, Transport} = ezmq_link:start_connection(),
@@ -512,7 +511,7 @@ next_mode(#ezmq_socket{mode = active_once} = State) ->
     State#ezmq_socket{mode = passive}.
 
 handle_deliver_recv(Transport, IdMsg, MqSState) ->
-    ?DEBUG("deliver_recv: ~w, ~w~n", [Transport, IdMsg]),
+    lager:debug("deliver_recv: ~w, ~w", [Transport, IdMsg]),
     case ezmq_socket_fsm:check({deliver_recv, Transport}, MqSState) of
         ok ->
             MqSState0 = handle_deliver_recv_2(Transport, IdMsg, queue_size(MqSState), MqSState),
@@ -594,7 +593,7 @@ queue_close(Transport, MqSState = #ezmq_socket{recv_q = Q}) ->
     MqSState#ezmq_socket{recv_q = Q1}.
     
 dequeue(MqSState = #ezmq_socket{recv_q = Q}) ->
-    ?DEBUG("TRANS: ~p, PENDING: ~p~n", [MqSState#ezmq_socket.transports, Q]),
+    lager:debug("TRANS: ~p, PENDING: ~p", [MqSState#ezmq_socket.transports, Q]),
     case transports_while(fun do_dequeue/2, Q, empty, MqSState) of
         {{Transport, Value}, Q1} ->
             MqSState0 = MqSState#ezmq_socket{recv_q = Q1},
