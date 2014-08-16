@@ -27,16 +27,16 @@ decode_greeting(Data = <<Length:8/integer, _:7, IDFlags:1/integer, Rest/binary>>
 decode_greeting(Data) ->
     {more, Data}.
 
-decode_greeting({1,0}, FrameLen, 0, Msg, Data) when size(Msg) < FrameLen - 1->
+%% libzmq 2.1 seems to ignore the IDFlag....
+
+decode_greeting({1,0}, FrameLen, _, Msg, Data) when size(Msg) < FrameLen - 1->
     {more, Data};
-decode_greeting(Ver = {1,0}, FrameLen, 0, Msg, _Data) ->
+decode_greeting(Ver = {1,0}, 1, _IDFlags, Msg, _Data) ->
+    {{greeting, Ver, undefined, <<>>}, Msg};
+decode_greeting(Ver = {1,0}, FrameLen, _IDFlags, Msg, _Data) ->
     IDLen = FrameLen - 1,
     <<Identity:IDLen/bytes, Rem/binary>> = Msg,
-    {{greeting, Ver, undefined, Identity}, Rem};
-decode_greeting({1,0}, FrameLen, _IDFlags, Msg, _Data) ->
-    IDLen = FrameLen - 1,
-    <<_:IDLen/bytes, Rem/binary>> = Msg,
-    {invalid, Rem}.
+    {{greeting, Ver, undefined, Identity}, Rem}.
 
 decode(Ver, Data = <<16#FF, Length:64/unsigned-integer, Flags:8/bits, Rest/binary>>) ->
     decode(Ver, Length, Flags, Rest, Data);

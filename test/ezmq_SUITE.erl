@@ -20,7 +20,7 @@ reqrep_tcp_large_passive(_Config) ->
 
 req_tcp_bind_close(_Config) ->
     {ok, S} = ezmq:socket([{type, req}, {active, false}]),
-    ok = ezmq:bind(S, tcp, 5555, []),
+    ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     ezmq:close(S).
 
 req_tcp_connect_close(_Config) ->
@@ -52,7 +52,7 @@ req_tcp_connecting_timeout(_Config) ->
     ezmq:close(S).
 dealer_tcp_bind_close(_Config) ->
     {ok, S} = ezmq:socket([{type, dealer}, {active, false}]),
-    ok = ezmq:bind(S, tcp, 5555, []),
+    ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     ezmq:close(S).
 
 dealer_tcp_connect_close(_Config) ->
@@ -107,7 +107,7 @@ req_tcp_connecting_trash(_Config) ->
 
 rep_tcp_connecting_timeout(_Config) ->
     {ok, S} = ezmq:socket([{type, rep}, {active, false}]),
-    ok = ezmq:bind(S, tcp, 5555, []),
+    ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     spawn(fun() ->
                   {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
                   ct:sleep(15000),   %% keep socket alive for at least 10sec...
@@ -119,7 +119,7 @@ rep_tcp_connecting_timeout(_Config) ->
 rep_tcp_connecting_trash(_Config) ->
     Self = self(),
     {ok, S} = ezmq:socket([{type, rep}, {active, false}]),
-    ok = ezmq:bind(S, tcp, 5555, []),
+    ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     spawn(fun() ->
                   {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
                   T = <<1,16#FF,"TRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASHTRASH">>,
@@ -179,7 +179,7 @@ create_bound_pair_multi(Type1, Type2, Cnt2, Mode, IP, Port) ->
             false
     end,
     {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}]),
-    ok = ezmq:bind(S1, tcp, Port, []),
+    ok = ezmq:bind(S1, tcp, Port, [{reuseaddr, true}]),
 
     S2 = create_multi_connect(Type2, Active, IP, Port, Cnt2, []),
     ct:sleep(10),  %% give it a moment to establish all sockets....
@@ -190,7 +190,7 @@ basic_test_dealer_rep(IP, Port, Cnt2, Mode, Size) ->
     Msg = list_to_binary(string:chars($X, Size)),
 
     %% send a message for each client Socket and expect a result on each socket
-    lists:foreach(fun(_S) -> ok = ezmq:send(S1, [Msg]) end, S2),
+    lists:foreach(fun(_S) -> ok = ezmq:send(S1, [<<>>, Msg]) end, S2),
     lists:foreach(fun(S) -> {ok, [Msg]} = ezmq:recv(S) end, S2),
 
     ok = ezmq:close(S1),
@@ -202,7 +202,7 @@ basic_test_dealer_req(IP, Port, Cnt2, Mode, Size) ->
 
     %% send a message for each client Socket and expect a result on each socket
     lists:foreach(fun(S) -> ok = ezmq:send(S, [Msg]) end, S2),
-    lists:foreach(fun(_S) -> {ok, [Msg]} = ezmq:recv(S1) end, S2),
+    lists:foreach(fun(_S) -> {ok, [<<>>, Msg]} = ezmq:recv(S1) end, S2),
 
     ok = ezmq:close(S1),
     lists:foreach(fun(S) -> ok = ezmq:close(S) end, S2).
@@ -218,8 +218,8 @@ basic_test_router_req(IP, Port, Cnt2, Mode, Size) ->
     %% send a message for each client Socket and expect a result on each socket
     lists:foreach(fun(S) -> ok = ezmq:send(S, [Msg]) end, S2),
     lists:foreach(fun(_S) ->
-                          {ok, {Id, [Msg]}} = ezmq:recv(S1),
-                          ok = ezmq:send(S1, {Id, [Msg]})
+                          {ok, {Id, [<<>>, Msg]}} = ezmq:recv(S1),
+                          ok = ezmq:send(S1, {Id, [<<>>, Msg]})
                   end, S2),
     lists:foreach(fun(S) -> {ok, [Msg]} = ezmq:recv(S) end, S2),
 
@@ -272,7 +272,7 @@ shutdown_stress_loop(0) ->
     ok;
 shutdown_stress_loop(N) ->
     {ok, S1} = ezmq:socket([{type, rep}, {active, false}]),
-    ok = ezmq:bind(S1, tcp, 5558 + N, []),
+    ok = ezmq:bind(S1, tcp, 5558 + N, [{reuseaddr, true}]),
     shutdown_stress_worker_loop(N, 100),
     ok = join_procs(100),
     ezmq:close(S1),
@@ -314,7 +314,7 @@ create_bound_pair(Type1, Type2, Mode, IP, Port) ->
     end,
     {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}]),
     {ok, S2} = ezmq:socket([{type, Type2}, {active, Active}]),
-    ok = ezmq:bind(S1, tcp, Port, []),
+    ok = ezmq:bind(S1, tcp, Port, [{reuseaddr, true}]),
     ok = ezmq:connect(S2, tcp, IP, Port, []),
     {S1, S2}.
 
@@ -356,7 +356,7 @@ ping_pong({S1, S2}, Msg, active) ->
     assert_mbox_empty(),
 
     ok = ezmq:send(S2, [Msg]),
-     assert_mbox({zmq, S1, [Msg]}),
+    assert_mbox({zmq, S1, [Msg]}),
     assert_mbox_empty(),
     ok;
     
@@ -378,6 +378,7 @@ basic_tests(IP, Port, Type1, Type2, Mode, Size) ->
 
 init_per_suite(Config) ->
     ok = application:start(sasl),
+    lager:start(),
     ok = application:start(gen_listener_tcp),
     ok = application:start(ezmq),
     Config.

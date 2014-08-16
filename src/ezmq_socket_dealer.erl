@@ -54,7 +54,7 @@ idle(check, dequeue_send, _MqSState, _State) ->
     keep;
 idle(check, deliver, _MqSState, _State) ->
     ok;
-idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
+idle(check, {deliver_recv, _Transport, _IdMsg}, _MqSState, _State) ->
     ok;
 idle(check, recv, _MqSState, _State) ->
     ok;

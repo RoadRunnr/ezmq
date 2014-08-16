@@ -169,13 +169,13 @@ connected(timeout, State) ->
     lager:debug("timeout in connected"),
     {stop, normal, State};
 
-connected({in, [_Head|Frames]}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
-    lager:debug("in connected Head: ~w, Frames: ~p", [_Head, Frames]),
+connected({in, Frames}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
+    lager:debug("in connected Frames: ~p", [Frames]),
     ezmq:deliver_recv(MqSocket, {RemoteId, Frames}),
     {next_state, connected, State};
 
 connected({send, Msg}, State) ->
-    send_frames([<<>>|Msg], {next_state, connected, State}).
+    send_frames(Msg, {next_state, connected, State}).
 
 %%--------------------------------------------------------------------
 %% @private

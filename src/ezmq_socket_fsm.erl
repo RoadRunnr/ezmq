@@ -21,6 +21,53 @@
 -type check_type() :: 'send' | 'dequeue_send' | 'deliver' | 'deliver_recv' | 'recv'.
 -type do_type()    :: 'queue_send' | {'deliver_send', list(transport())} | {'deliver', transport()} | {'queue', transport()} | {'dequeue', transport()}.
 
+%% FSM CHECKS
+%% ==========
+%%
+%% {'send', Msg}:
+%%     is it permited the execute a send call in the current state,
+%%     return: {ok, Transport} | {error, Reason} | {queue, block | return}
+%%
+%% 'dequeue_send':
+%%     return the transport to send on or 'keep' when none is available
+%%     return: {ok, Transport} | 'keep'
+%%
+%% 'deliver':
+%%     should the recived message delivered to the socket owner or queue for later
+%%     return: ok | queue
+%%
+%% {'deliver_recv', Transport, IdMsg}
+%%     is IdMsg recived on Transport permited in the current state
+%%     return: ok | {error, Reason}
+%%
+%% 'recv':
+%%     is it permited the execute a recv call in the current state,
+%%     return: ok | {error, Reason}
+%%
+%% FSM do operations
+%% =================
+%%
+%% do operations change the current state of FSM,
+%%  their return is:
+%%       {next_state, NextStateName, MqSState1, State} | {error, Reason}
+%%
+%% 'queue_send':
+%%     called the a new message has been queued for sending
+%%
+%% {'deliver_send', Transports}:
+%%     called the a new message has been send on Transports,
+%%     Transports == 'abort' signals that the last message was not sent
+%%
+%% {'deliver', Transport}:
+%%     called the a received message has been delivered to the socket owner
+%%
+%% {'queue', Transport}:
+%%     called the a received message has been queued for delivery to the socket owner
+%%
+%% {'dequeue', Transport}:
+%%    called the a queued received message has been delivered to the socket owner
+
+
 init(Module, Opts, MqSState) ->
     case Module:init(Opts) of
         {ok, StateName, State} ->

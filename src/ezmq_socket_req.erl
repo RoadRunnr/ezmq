@@ -41,10 +41,12 @@ close(_StateName, _Transport, MqSState, State) ->
     State1 = State#state{last_send = none},
     {next_state, idle, MqSState, State1}.
 
-encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-    ezmq:simple_encap_msg(Msg).
+encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) when is_list(Msg) ->
+    %% socket always includes an empty message part
+    ezmq:simple_encap_msg([<<>>|Msg]).
 decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
-    ezmq:simple_decap_msg(Msg).
+    [_|Tail] = ezmq:simple_decap_msg(Msg),
+    Tail.
 
 idle(check, {send, _Msg}, #ezmq_socket{transports = []}, _State) ->
     {queue, block};
@@ -85,9 +87,9 @@ send_queued(do, _, _MqSState, _State) ->
 
 pending(check, recv, _MqSState, _State) ->
     ok;
-pending(check, {deliver_recv, Transport}, _MqSState, State)
+pending(check, {deliver_recv, Transport, IdMsg}, _MqSState, State)
   when State#state.last_send == Transport ->
-    ok;
+    check_message_structure(IdMsg);
 pending(check, deliver, _MqSState, _State) ->
     ok;
 pending(check, _, _MqSState, _State) ->
@@ -117,3 +119,12 @@ reply(do, {deliver, _Transport}, MqSState, State) ->
 
 reply(do, _, _MqSState, _State) ->
     {error, fsm}.
+
+%%--------------------------------------------------------------------
+%% Helper
+%%--------------------------------------------------------------------
+
+check_message_structure({_Id, [{normal, <<>>}|_]}) ->
+    ok;
+check_message_structure(_) ->
+    {error, invalid_message}.

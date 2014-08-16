@@ -512,7 +512,7 @@ next_mode(#ezmq_socket{mode = active_once} = State) ->
 
 handle_deliver_recv(Transport, IdMsg, MqSState) ->
     lager:debug("deliver_recv: ~w, ~w", [Transport, IdMsg]),
-    case ezmq_socket_fsm:check({deliver_recv, Transport}, MqSState) of
+    case ezmq_socket_fsm:check({deliver_recv, Transport, IdMsg}, MqSState) of
         ok ->
             MqSState0 = handle_deliver_recv_2(Transport, IdMsg, queue_size(MqSState), MqSState),
             {noreply, MqSState0};
@@ -565,7 +565,7 @@ simple_encap_msg(Msg) when is_list(Msg) ->
     lists:map(fun(M) -> {normal, M} end, Msg).
 simple_decap_msg(Msg) when is_list(Msg) ->
     lists:reverse(lists:foldl(fun({normal, M}, Acc) -> [M|Acc]; (_, Acc) -> Acc end, [], Msg)).
-                       
+
 ezmq_link_send({Transports, Msg}, State)
   when is_list(Transports) ->
     lists:foreach(fun(T) ->
