@@ -42,14 +42,17 @@ close(_StateName, _Transport, MqSState, State) ->
     {next_state, idle, MqSState, State1}.
 
 encap_msg({_Transport, Msg}, _StateName, _MqSState, _State) ->
-    ezmq:simple_encap_msg(Msg).
+    %% socket always includes an empty message part
+    ezmq:simple_encap_msg([<<>>|Msg]).
 decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
-    ezmq:simple_decap_msg(Msg).
+    %% socket always drops the first message message part
+    [_|Tail] = ezmq:simple_decap_msg(Msg),
+    Tail.
 
 idle(check, recv, _MqSState, _State) ->
     ok;
-idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-    ok;
+idle(check, {deliver_recv, _Transport, IdMsg}, _MqSState, _State) ->
+    check_message_structure(IdMsg);
 idle(check, deliver, _MqSState, _State) ->
     ok;
 idle(check, _, _MqSState, _State) ->
@@ -65,8 +68,8 @@ idle(do, {deliver, Transport}, MqSState, State) ->
 idle(do, _, _MqSState, _State) ->
     {error, fsm}.
 
-pending(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-    ok;
+pending(check, {deliver_recv, _Transport, IdMsg}, _MqSState, _State) ->
+    check_message_structure(IdMsg);
 pending(check, recv, _MqSState, _State) ->
     ok;
 pending(check, deliver, _MqSState, _State) ->
@@ -84,8 +87,8 @@ pending(do, {deliver, Transport}, MqSState, State) ->
 pending(do, _, _MqSState, _State) ->
     {error, fsm}.
 
-processing(check, {deliver_recv, _Transport}, _MqSState, _State) ->
-    ok;
+processing(check, {deliver_recv, _Transport, IdMsg}, _MqSState, _State) ->
+    check_message_structure(IdMsg);
 processing(check, {deliver, _Transport}, _MqSState, _State) ->
     queue;
 processing(check, {send, _Msg}, _MqSState, #state{last_recv = Transport}) ->
@@ -101,3 +104,12 @@ processing(do, {queue, _Transport}, MqSState, State) ->
 
 processing(do, _, _MqSState, _State) ->
     {error, fsm}.
+
+%%--------------------------------------------------------------------
+%% Helper
+%%--------------------------------------------------------------------
+
+check_message_structure({_Id, [{normal, <<>>}|_]}) ->
+    ok;
+check_message_structure(_) ->
+    {error, invalid_message}.

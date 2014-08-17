@@ -6,11 +6,6 @@
 
 -behaviour(gen_fsm).
 
-%% --------------------------------------------------------------------
-%% Include files
-%% --------------------------------------------------------------------
--include("ezmq_debug.hrl").
-
 %% API
 -export([start_link/0]).
 -export([start_connection/0, accept/4, connect/7, close/1]).
@@ -119,14 +114,14 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 setup({accept, MqSocket, Identity, Socket}, State) ->
-    ?DEBUG("got setup~n"),
+    lager:debug("got setup"),
     NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
-    ?DEBUG("NewState: ~p~n", [NewState]),
+    lager:debug("NewState: ~p", [NewState]),
     Packet = ezmq_frame:encode_greeting(State#state.version, undefined, Identity),
     send_packet(Packet, {next_state, open, NewState, ?CONNECT_TIMEOUT});
 
 setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
-    ?DEBUG("got connect: ~w, ~w~n", [Address, Port]),
+    lager:debug("got connect: ~w, ~w", [Address, Port]),
 
     %%TODO: socket options
     case gen_tcp:connect(Address, Port, TcpOpts, Timeout) of
@@ -140,7 +135,7 @@ setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State
     end.
 
 connecting(timeout, State = #state{mqsocket = MqSocket}) ->
-    ?DEBUG("timeout in connecting~n"),
+    lager:debug("timeout in connecting"),
     ezmq:deliver_connect(MqSocket, {error, timeout}),
     {stop, normal, State};
 
@@ -152,12 +147,12 @@ connecting({greeting, Ver, _SocketType, RemoteId0},
     send_packet(Packet, {next_state, connected, State #state{remote_id = RemoteId, version = Ver}});
 
 connecting(_Msg, State = #state{mqsocket = MqSocket}) ->
-    ?DEBUG("Invalid message in connecting: ~p~n", [_Msg]),
+    lager:debug("Invalid message in connecting: ~p", [_Msg]),
     ezmq:deliver_connect(MqSocket, {error, data}),
     {stop, normal, State}.
 
 open(timeout, State) ->
-    ?DEBUG("timeout in open~n"),
+    lager:debug("timeout in open"),
     {stop, normal, State};
 
 open({greeting, Ver, _SocketType, RemoteId0},
@@ -167,20 +162,20 @@ open({greeting, Ver, _SocketType, RemoteId0},
     {next_state, connected, State#state{remote_id = RemoteId, version = Ver}};
 
 open(_Msg, State) ->
-    ?DEBUG("Invalid message in open: ~p~n", [_Msg]),
+    lager:debug("Invalid message in open: ~p", [_Msg]),
     {stop, normal, State}.
 
 connected(timeout, State) ->
-    ?DEBUG("timeout in connected~n"),
+    lager:debug("timeout in connected"),
     {stop, normal, State};
 
-connected({in, [_Head|Frames]}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
-    ?DEBUG("in connected Head: ~w, Frames: ~p~n", [_Head, Frames]),
+connected({in, Frames}, #state{mqsocket = MqSocket, remote_id = RemoteId} = State) ->
+    lager:debug("in connected Frames: ~p", [Frames]),
     ezmq:deliver_recv(MqSocket, {RemoteId, Frames}),
     {next_state, connected, State};
 
 connected({send, Msg}, State) ->
-    send_frames([<<>>|Msg], {next_state, connected, State}).
+    send_frames(Msg, {next_state, connected, State}).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -259,12 +254,12 @@ handle_info({'EXIT', MqSocket, _Reason}, _StateName, #state{mqsocket = MqSocket}
     {stop, normal, State#state{mqsocket = undefined}};
 
 handle_info({tcp, Socket, Data}, StateName, #state{socket = Socket} = State) ->
-    ?DEBUG("handle_info: ~p~n", [Data]),
+    lager:debug("handle_info: ~p", [Data]),
     State1 = State#state{pending = <<(State#state.pending)/binary, Data/binary>>},
     handle_data(StateName, State1, {next_state, StateName, State1});
 
 handle_info({tcp_closed, Socket}, _StateName, #state{socket = Socket} = State) ->
-    ?DEBUG("client disconnected: ~w~n", [Socket]),
+    lager:debug("client disconnected: ~w", [Socket]),
     {stop, normal, State}.
 
 handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNext) ->
@@ -276,7 +271,7 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
        StateName =:= open ->
     {Msg, DataRest} = ezmq_frame:decode_greeting(Pending),
     State1 = State#state{pending = DataRest},
-    ?DEBUG("handle_info (greeting): decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
+    lager:debug("handle_info (greeting): decoded: ~p, rest: ~p", [Msg, DataRest]),
 
     case Msg of
         more ->
@@ -298,7 +293,7 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
 handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending} = State, ProcessStateNext) ->
     {Msg, DataRest} = ezmq_frame:decode(Ver, Pending),
     State1 = State#state{pending = DataRest},
-    ?DEBUG("handle_info: decoded: ~p~nrest: ~p~n", [Msg, DataRest]),
+    lager:debug("handle_info: decoded: ~p, rest: ~p", [Msg, DataRest]),
 
     case Msg of
         more ->
@@ -315,9 +310,9 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
         {false, Frame} ->
             Frames = lists:reverse([Frame|State1#state.frames]),
             State2 = State1#state{frames = []},
-            ?DEBUG("handle_data: finale decoded: ~p~n", [Frames]),
+            lager:debug("handle_data: finale decoded: ~p", [Frames]),
             Reply = exec_sync(Frames, StateName, State2),
-            ?DEBUG("handle_data: reply: ~p~n", [Reply]),
+            lager:debug("handle_data: reply: ~p", [Reply]),
             handle_data_reply(Reply)
     end.
 
@@ -334,12 +329,12 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, #state{mqsocket = MqSocket, socket = Socket})
   when is_port(Socket) ->
-    ?DEBUG("terminate"),
+    lager:debug("terminate"),
     catch ezmq:deliver_close(MqSocket),
     gen_tcp:close(Socket),
     ok;
 terminate(_Reason, _StateName, #state{mqsocket = MqSocket}) ->
-    ?DEBUG("terminate"),
+    lager:debug("terminate"),
     catch ezmq:deliver_close(MqSocket),
     ok.
 
@@ -381,6 +376,6 @@ send_packet(Packet, NextStateInfo) ->
             ok = inet:setopts(Socket, [{active, once}]),
             NextStateInfo;
         {error, Reason} ->
-            ?DEBUG("error - Reason: ~p~n", [Reason]),
+            lager:debug("error - Reason: ~p", [Reason]),
             {stop, Reason, State}
     end.

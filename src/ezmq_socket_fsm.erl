@@ -7,7 +7,6 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("ezmq_debug.hrl").
 -include("ezmq_internal.hrl").
 
 -export([init/3, check/2, do/2, close/2, encap_msg/2, decap_msg/3]).
@@ -22,6 +21,53 @@
 -type check_type() :: 'send' | 'dequeue_send' | 'deliver' | 'deliver_recv' | 'recv'.
 -type do_type()    :: 'queue_send' | {'deliver_send', list(transport())} | {'deliver', transport()} | {'queue', transport()} | {'dequeue', transport()}.
 
+%% FSM CHECKS
+%% ==========
+%%
+%% {'send', Msg}:
+%%     is it permited the execute a send call in the current state,
+%%     return: {ok, Transport} | {error, Reason} | {queue, block | return}
+%%
+%% 'dequeue_send':
+%%     return the transport to send on or 'keep' when none is available
+%%     return: {ok, Transport} | 'keep'
+%%
+%% 'deliver':
+%%     should the recived message delivered to the socket owner or queue for later
+%%     return: ok | queue
+%%
+%% {'deliver_recv', Transport, IdMsg}
+%%     is IdMsg recived on Transport permited in the current state
+%%     return: ok | {error, Reason}
+%%
+%% 'recv':
+%%     is it permited the execute a recv call in the current state,
+%%     return: ok | {error, Reason}
+%%
+%% FSM do operations
+%% =================
+%%
+%% do operations change the current state of FSM,
+%%  their return is:
+%%       {next_state, NextStateName, MqSState1, State} | {error, Reason}
+%%
+%% 'queue_send':
+%%     called the a new message has been queued for sending
+%%
+%% {'deliver_send', Transports}:
+%%     called the a new message has been send on Transports,
+%%     Transports == 'abort' signals that the last message was not sent
+%%
+%% {'deliver', Transport}:
+%%     called the a received message has been delivered to the socket owner
+%%
+%% {'queue', Transport}:
+%%     called the a received message has been queued for delivery to the socket owner
+%%
+%% {'dequeue', Transport}:
+%%    called the a queued received message has been delivered to the socket owner
+
+
 init(Module, Opts, MqSState) ->
     case Module:init(Opts) of
         {ok, StateName, State} ->
@@ -34,7 +80,7 @@ init(Module, Opts, MqSState) ->
 check(Action, MqSState = #ezmq_socket{fsm = Fsm}) ->
     #fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
     R = Module:StateName(check, Action, MqSState, State),
-    ?DEBUG("ezmq_socket_fsm state: ~w, check: ~w, Result: ~w~n", [StateName, Action, R]),
+    lager:debug("ezmq_socket_fsm state: ~w, check: ~w, Result: ~w", [StateName, Action, R]),
     R.
 
 do(Action, MqSState = #ezmq_socket{fsm = Fsm}) ->
@@ -44,7 +90,7 @@ do(Action, MqSState = #ezmq_socket{fsm = Fsm}) ->
             error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Action, Reason, MqSState, State]),
             error(Reason);
         {next_state, NextStateName, NextMqSState, NextState} ->
-            ?DEBUG("ezmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w~n", [StateName, Action, NextStateName]),
+            lager:debug("ezmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w", [StateName, Action, NextStateName]),
             NewFsm = Fsm#fsm_state{state_name = NextStateName, state = NextState},
             NextMqSState#ezmq_socket{fsm = NewFsm}
     end.
@@ -56,7 +102,7 @@ close(Transport, MqSState = #ezmq_socket{fsm = Fsm}) ->
             error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Transport, Reason, MqSState, State]),
             error(Reason);
         {next_state, NextStateName, NextMqSState, NextState} ->
-            ?DEBUG("ezmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w~n", [StateName, Transport, NextStateName]),
+            lager:debug("ezmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w", [StateName, Transport, NextStateName]),
             NewFsm = Fsm#fsm_state{state_name = NextStateName, state = NextState},
             NextMqSState#ezmq_socket{fsm = NewFsm}
     end.

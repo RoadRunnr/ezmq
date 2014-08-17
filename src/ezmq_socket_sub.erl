@@ -46,7 +46,7 @@ decap_msg(_Transport, {_RemoteId, Msg}, _StateName, _MqSState, _State) ->
 
 idle(check, deliver, _MqSState, _State) ->
     ok;
-idle(check, {deliver_recv, _Transport}, _MqSState, _State) ->
+idle(check, {deliver_recv, _Transport, _IdMsg}, _MqSState, _State) ->
     ok;
 idle(check, recv, _MqSState, _State) ->
     ok;
