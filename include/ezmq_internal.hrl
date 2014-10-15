@@ -2,8 +2,12 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+-define(SUPPORTED_VERSIONS, [{2,0},{1,0}]).
+
 -record(ezmq_socket, {
+          version = {2,0},
           owner                  :: pid(),
+          type                   :: atom(),
           fsm                    :: term(),
           identity = <<>>        :: binary(),
 

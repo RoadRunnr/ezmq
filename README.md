@@ -22,7 +22,7 @@ to be implemented in Erlang itself.
 Main features
 -------------
 
-* ØMQ compatible
+* ØMQ compatible, protocol versions ZMTP 1.0 (13/ZMTP) and ZMTP 2.0 (15/ZMTP)
 * 100% Erlang
 * good fault isolation (a crash in the message decoder won't take down
   your Erlang VM)
@@ -41,6 +41,7 @@ TODO:
 * identity support
 * send queue improvements
 * high water marks for send queue
+* ZMTP 2.0+ remote subscription support (see TODO in ezmq_socket_pub)
 
 License
 -------

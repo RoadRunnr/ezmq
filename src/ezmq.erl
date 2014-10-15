@@ -79,7 +79,7 @@ connect(Socket, tcp, Address, Port, Opts) when ?port(Port) ->
     end.
 
 close(Socket) ->
-	gen_server:call(Socket, close).
+        gen_server:call(Socket, close).
 
 send(Socket, Msg) when is_pid(Socket), is_list(Msg) ->
     gen_server:call(Socket, {send, Msg}, infinity);
@@ -227,14 +227,14 @@ init_socket(Owner, Type, Opts) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{identity = Identity}) ->
+handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
     TcpOpts0 = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
     TcpOpts1 = case proplists:get_value(ip, Opts) of
                    undefined -> TcpOpts0;
                    I -> [{ip, I}|TcpOpts0]
                end,
     lager:debug("bind: ~p", [TcpOpts1]),
-    case ezmq_tcp_socket:start_link(Identity, Port, TcpOpts1) of
+    case ezmq_tcp_socket:start_link(Version, Type, Identity, Port, TcpOpts1) of
         {ok, Pid} ->
             Listen = orddict:append(Pid, {tcp, Port, Opts}, MqSState#ezmq_socket.listen_trans),
             {reply, ok, MqSState#ezmq_socket{listen_trans = Listen}};
@@ -313,6 +313,7 @@ handle_cast({deliver_accept, Transport, RemoteId}, State) ->
 
 handle_cast({deliver_connect, Transport, {ok, RemoteId}}, State) ->
     State1 = transports_activate(Transport, RemoteId, State),
+    lager:debug("DELIVER_CONNECT: ~p", [lager:pr(State1, ?MODULE)]),
     State2 = send_queue_run(State1),
     {noreply, State2};
 
@@ -413,12 +414,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-do_connect(ConnectArgs = #cargs{family = tcp}, MqSState = #ezmq_socket{identity = Identity}) ->
+do_connect(ConnectArgs = #cargs{family = tcp}, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
     lager:debug("starting connect: ~w", [ConnectArgs]),
     #cargs{address = Address, port = Port, tcpopts = TcpOpts,
            timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
     {ok, Transport} = ezmq_link:start_connection(),
-    ezmq_link:connect(Identity, Transport, tcp, Address, Port, TcpOpts, Timeout),
+    ezmq_link:connect(Version, Type, Identity, Transport, tcp, Address, Port, TcpOpts, Timeout),
     Connecting = orddict:store(Transport, ConnectArgs, MqSState#ezmq_socket.connecting),
     MqSState#ezmq_socket{connecting = Connecting}.
 
@@ -515,6 +516,9 @@ handle_deliver_recv(Transport, IdMsg, MqSState) ->
     case ezmq_socket_fsm:check({deliver_recv, Transport, IdMsg}, MqSState) of
         ok ->
             MqSState0 = handle_deliver_recv_2(Transport, IdMsg, queue_size(MqSState), MqSState),
+            {noreply, MqSState0};
+        control ->
+            MqSState0 = ezmq_socket_fsm:do({control, IdMsg}, MqSState),
             {noreply, MqSState0};
         {error, _Reason} ->
             {noreply, MqSState}
@@ -617,6 +621,8 @@ do_dequeue(Transport, Q) ->
             continue
     end.
 
+do_setopts({type, Type}, MqSState) ->
+    MqSState#ezmq_socket{type = Type};
 do_setopts({identity, Id}, MqSState) ->
     MqSState#ezmq_socket{identity = iolist_to_binary(Id)};
 do_setopts({active, once}, MqSState) ->
@@ -625,6 +631,13 @@ do_setopts({active, true}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active});
 do_setopts({active, false}, MqSState) ->
     MqSState#ezmq_socket{mode = passive};
+do_setopts({version, Version}, MqSState) ->
+    case lists:member(Version, ?SUPPORTED_VERSIONS) of
+        true ->
+            MqSState#ezmq_socket{version = Version};
+        _ ->
+            erlang:error(badargs, [{version, Version}])
+    end;
 
 do_setopts(_, MqSState) ->
     MqSState.
