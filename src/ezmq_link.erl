@@ -8,22 +8,26 @@
 
 %% API
 -export([start_link/0]).
--export([start_connection/0, accept/4, connect/7, close/1]).
+-export([start_connection/0, accept/5, connect/8, close/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
          handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
--export([setup/2, open/2, connecting/2, connected/2, send/2]).
+-export([setup/2, open/2, handshake/2, connecting/2, connected/2, send/2]).
 
 -define(SERVER, ?MODULE).
 
 -record(state, {
+          role = undefined          :: 'undefined' | 'client' | 'server',
+          type                      :: atom(),
           mqsocket                  :: pid(),
           identity = <<>>           :: binary(),
           remote_id = <<>>          :: binary(),
+          remote_id_len = 0         :: integer(),  %% only used during backward compatible negotiation
           socket,
-          version = {1,0},
+          version = {2,0},
           frames = [],
+          hs_state = undefined,
           pending = <<>>
          }).
 
@@ -64,18 +68,18 @@ start_link() ->
 start_connection() ->
     ezmq_link_sup:start_connection().
 
-accept(MqSocket, Identity, Server, Socket) ->
+accept(MqSocket, Type, Identity, Server, Socket) ->
     ok = gen_tcp:controlling_process(Socket, Server),
-    gen_fsm:send_event(Server, {accept, MqSocket, Identity, Socket}).
+    gen_fsm:send_event(Server, {accept, MqSocket, Type, Identity, Socket}).
 
-connect(Identity, Server, tcp, Address, Port, TcpOpts, Timeout) ->
-    gen_fsm:send_event(Server, {connect, self(), Identity, tcp, Address, Port, TcpOpts, Timeout}).
+connect(Type, Identity, Server, tcp, Address, Port, TcpOpts, Timeout) ->
+    gen_fsm:send_event(Server, {connect, self(), Type, Identity, tcp, Address, Port, TcpOpts, Timeout}).
 
 send(Server, Msg) ->
     gen_fsm:send_event(Server, {send, Msg}).
 
 close(Server) ->
-	gen_fsm:sync_send_all_state_event(Server, close).
+        gen_fsm:sync_send_all_state_event(Server, close).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -113,56 +117,133 @@ init([]) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
-setup({accept, MqSocket, Identity, Socket}, State) ->
+setup({accept, MqSocket, Type, Identity, Socket}, State) ->
     lager:debug("got setup"),
-    NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
+    NewState = State#state{role = server, type = Type, mqsocket = MqSocket,
+                           identity = Identity, socket = Socket},
     lager:debug("NewState: ~p", [NewState]),
-    Packet = ezmq_frame:encode_greeting(State#state.version, undefined, Identity),
-    send_packet(Packet, {next_state, open, NewState, ?CONNECT_TIMEOUT});
+    send_greeting({next_state, open, NewState, ?CONNECT_TIMEOUT});
 
-setup({connect, MqSocket, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
+setup({connect, MqSocket, Type, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
     lager:debug("got connect: ~w, ~w", [Address, Port]),
+    State1 = State#state{role = client, type = Type, mqsocket = MqSocket,
+                         identity = Identity},
 
     %%TODO: socket options
     case gen_tcp:connect(Address, Port, TcpOpts, Timeout) of
         {ok, Socket} ->
-            NewState = State#state{mqsocket = MqSocket, identity = Identity, socket = Socket},
+            State2 = State1#state{socket = Socket},
             ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, connecting, NewState, ?CONNECT_TIMEOUT};
+            send_greeting({next_state, connecting, State2, ?CONNECT_TIMEOUT});
         Reply ->
-            ezmq:deliver_connect(MqSocket, Reply),
-            {stop, normal, State}                
+            deliver_connect(State1, Reply),
+            {stop, normal, State1}
     end.
 
-connecting(timeout, State = #state{mqsocket = MqSocket}) ->
+connecting(timeout, State) ->
     lager:debug("timeout in connecting"),
-    ezmq:deliver_connect(MqSocket, {error, timeout}),
+    deliver_connect(State, {error, timeout}),
     {stop, normal, State};
 
-connecting({greeting, Ver, _SocketType, RemoteId0},
-           State = #state{mqsocket = MqSocket, identity = Identity}) ->
-    RemoteId = ezmq:remote_id_assign(RemoteId0),
-    ezmq:deliver_connect(MqSocket, {ok, RemoteId}),
-    Packet = ezmq_frame:encode_greeting(State#state.version, undefined, Identity),
-    send_packet(Packet, {next_state, connected, State #state{remote_id = RemoteId, version = Ver}});
+%% if we get a ZMTP 1.0 greeting or we are talking ZMTP 1.0 only, select ZMTP 1.0
+connecting({_FrameType, IdLength}, State = #state{version = {Major, _}})
+  when Major == 1 ->
+    lager:debug("in connecting v1, got greeting: ~p", [IdLength]),
+    handle_zmtp13_greeting(IdLength, State);
 
-connecting(_Msg, State = #state{mqsocket = MqSocket}) ->
+connecting({short, IdLength}, State = #state{version = {_Major, _}}) ->
+    lager:debug("in connecting v~w, got greeting: ~p", [_Major, IdLength]),
+    NextStateInfo = handle_zmtp13_greeting(IdLength, State),
+    finish_zmtp13_handshake(NextStateInfo);
+
+connecting({long, IdLength}, State = #state{version = {Major, _}}) ->
+    lager:debug("in connecting v~w, got signature: ~p", [Major, IdLength]),
+    send_major(next_handshake_state('$major', State#state{remote_id_len = IdLength}));
+
+connecting(_Msg, State) ->
     lager:debug("Invalid message in connecting: ~p", [_Msg]),
-    ezmq:deliver_connect(MqSocket, {error, data}),
+    deliver_connect(State, {error, data}),
     {stop, normal, State}.
 
 open(timeout, State) ->
     lager:debug("timeout in open"),
     {stop, normal, State};
 
-open({greeting, Ver, _SocketType, RemoteId0},
-     #state{mqsocket = MqSocket} = State) ->
-    RemoteId = ezmq:remote_id_assign(RemoteId0),
-    ezmq:deliver_accept(MqSocket, RemoteId),
-    {next_state, connected, State#state{remote_id = RemoteId, version = Ver}};
+%% if we get a ZMTP 1.0 greeting or we are talking ZMTP 1.0 only, select ZMTP 1.0
+open({_FrameType, IdLength}, State = #state{version = {Major, _}})
+  when Major == 1 ->
+    lager:debug("in open v1, got greeting: ~p", [IdLength]),
+    handle_zmtp13_greeting(IdLength, State);
+
+open({short, IdLength}, State = #state{version = {_Major, _}}) ->
+    lager:debug("in open v~w, got greeting: ~p", [_Major, IdLength]),
+    NextStateInfo = handle_zmtp13_greeting(IdLength, State),
+    finish_zmtp13_handshake(NextStateInfo);
+
+open({long, IdLength}, State = #state{version = {Major, _}}) ->
+    lager:debug("in open v~w, got signature: ~p", [Major, IdLength]),
+    send_major(next_handshake_state('$major', State#state{remote_id_len = IdLength}));
 
 open(_Msg, State) ->
     lager:debug("Invalid message in open: ~p", [_Msg]),
+    {stop, normal, State}.
+
+handshake(timeout, State) ->
+    lager:debug("timeout in open"),
+    {stop, normal, State};
+
+handshake(_Msg, State = #state{hs_state = HsState}) ->
+    lager:debug("Invalid handshake message in ~w: ~p", [HsState, _Msg]),
+    {stop, normal, State}.
+
+handshake({1, _}, '$identity', Data, #state{remote_id_len = IdLength})
+  when byte_size(Data) < IdLength ->
+    more;
+handshake({1, _}, '$identity', Data, #state{remote_id_len = IdLength} = State) ->
+    <<RemoteId:IdLength/bytes, Rest/binary>> = Data,
+    lager:debug("in '$identity' v1, got remoteId: ~p", [RemoteId]),
+    State1 = State#state{pending = Rest},
+    State2 = remote_id_assign(RemoteId, State1),
+    deliver_connected(State2),
+    {next_state, connected, State2};
+
+handshake({2, _}, '$identity', Data, #state{remote_id_len = IdLength})
+  when byte_size(Data) < IdLength + 2 ->
+    more;
+
+handshake({2, _}, '$identity', <<0:8, IdLength:8/integer, RemoteId:IdLength/bytes, Rest/binary>>,
+          #state{remote_id_len = IdLength} = State) ->
+    lager:debug("in '$identity' v2, remoteId: ~p", [RemoteId]),
+    State1 = State#state{pending = Rest},
+    State2 = remote_id_assign(RemoteId, State1),
+    deliver_connected(State2),
+    {next_state, connected, State2};
+
+handshake({2, _}, '$identity', _Data, State) ->
+    {stop, normal, State};
+
+%% revision 0x01 is really ZMTP 2.0
+handshake(_, '$major', <<1:8, Rest/binary>>, State) ->
+    State1 = State#state{pending = Rest},
+    negotiate_major(2, State1);
+handshake(_, '$major', <<Major:8, Rest/binary>>, State)
+  when Major >= 3 ->
+    State1 = State#state{pending = Rest},
+    negotiate_major(Major, State1);
+handshake(_, '$major', <<Major:8, _/binary>>, State) ->
+    lager:error("peer tried invalid protocol version ~w", [Major]),
+    {stop, normal, State};
+
+%% TODO: handle ZMTP 3.0+
+handshake(_, '$minor', _Data, State) ->
+    {stop, normal, State};
+
+handshake(_, '$socketType', <<SocketType:8, Rest/binary>>, State) ->
+    State1 = State#state{pending = Rest},
+    handle_socket_type(SocketType, State1);
+
+handshake(Version, HsState, Data, State) ->
+    lager:debug("in ~p:~p, invalid data ~p", [Version, HsState, Data]),
     {stop, normal, State}.
 
 connected(timeout, State) ->
@@ -271,7 +352,7 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
        StateName =:= open ->
     {Msg, DataRest} = ezmq_frame:decode_greeting(Pending),
     State1 = State#state{pending = DataRest},
-    lager:debug("handle_info (greeting): decoded: ~p, rest: ~p", [Msg, DataRest]),
+    lager:debug("handle_data (greeting): decoded: ~p, rest: ~p", [Msg, DataRest]),
 
     case Msg of
         more ->
@@ -281,19 +362,32 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
         invalid ->
             %% assume that this is a greeting for a version that we don't understand,
             %% fall back to ZMTP 1.0
-            FakeMsg = {greeting, {1,0}, undefined, <<>>},
+            FakeMsg = {short, 0},
             Reply = ?MODULE:StateName(FakeMsg, State1),
             handle_data_reply(Reply);
 
-        {greeting, _Ver, _SocketType, _Identity} ->
-            Reply = ?MODULE:StateName(Msg, State1),
+        Other ->
+            Reply = ?MODULE:StateName(Other, State1),
             handle_data_reply(Reply)
     end;
+
+handle_data(handshake, State = #state{version = Version, hs_state = HsState, socket = Socket, pending = Pending},
+            ProcessStateNext) ->
+    lager:debug("handshake ~w.~w ~w, got data: ~p", [element(1, Version), element(2, Version), HsState, Pending]),
+    case handshake(Version, HsState, Pending, State) of
+        more ->
+            ok = inet:setopts(Socket, [{active, once}]),
+            setelement(3, ProcessStateNext, State);
+
+        Reply ->
+            handle_data_reply(Reply)
+    end;
+
 
 handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending} = State, ProcessStateNext) ->
     {Msg, DataRest} = ezmq_frame:decode(Ver, Pending),
     State1 = State#state{pending = DataRest},
-    lager:debug("handle_info: decoded: ~p, rest: ~p", [Msg, DataRest]),
+    lager:debug("handle_data: (~w, ~p) decoded: ~p, rest: ~p", [Ver, StateName, Msg, DataRest]),
 
     case Msg of
         more ->
@@ -312,7 +406,7 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
             State2 = State1#state{frames = []},
             lager:debug("handle_data: finale decoded: ~p", [Frames]),
             Reply = exec_sync(Frames, StateName, State2),
-            lager:debug("handle_data: reply: ~p", [Reply]),
+            lager:debug("handle_data: reply: ~p", [lager:pr(?MODULE, Reply)]),
             handle_data_reply(Reply)
     end.
 
@@ -363,8 +457,90 @@ handle_data_reply(Reply)
 handle_data_reply(Reply) ->
     Reply.
 
+next_handshake_state(HsState, State) ->
+    {next_state, handshake, State#state{hs_state = HsState}}.
+
+remote_id_assign(RemoteId0, State) ->
+    State#state{remote_id = ezmq:remote_id_assign(RemoteId0)}.
+
+handle_zmtp13_greeting(IdLength, State) ->
+    State1 = State#state{version = {1, 0}, remote_id_len = IdLength},
+    if IdLength == 0 ->
+            State2 = remote_id_assign(<<>>, State1),
+            deliver_connected(State2),
+            {next_state, connected, State2};
+       true ->
+            next_handshake_state('$identity', State1)
+    end.
+
+deliver_connected(State = #state{role = client, remote_id = RemoteId}) ->
+    deliver_connect(State, {ok, RemoteId});
+deliver_connected(#state{role = server, mqsocket = MqSocket, remote_id = RemoteId}) ->
+    ezmq:deliver_accept(MqSocket, RemoteId).
+
+deliver_connect(#state{mqsocket = MqSocket}, Reply) ->
+    ezmq:deliver_connect(MqSocket, Reply).
+
+negotiate_major(RemoteMajor, State = #state{version = {Major, _}})
+  when Major =:= 2 orelse RemoteMajor =:= 2 ->
+    finish_zmtp15_handshake(next_handshake_state('$socketType', State#state{version = {2, 0}}));
+
+negotiate_major(RemoteMajor, State = #state{version = {Major, _}})
+  when RemoteMajor < Major ->
+    %% downgrade
+    Version = highest_supported_version(Major),
+    send_minor(next_handshake_state('$minor', State#state{version = Version}));
+
+negotiate_major(_RemoteMajor, State) ->
+    send_minor(next_handshake_state('$minor', State)).
+
+handle_socket_type(RemoteSocketType, State = #state{type = Type}) ->
+    RemoteSocketTypeAtom = ezmq_frame:socket_type_atom(RemoteSocketType),
+    case is_compatible_socket(Type, RemoteSocketTypeAtom) of
+        ok ->
+            next_handshake_state('$identity', State);
+        Other ->
+            lager:warning("socket types ~w: ~w", [{Type, RemoteSocketTypeAtom}, Other]),
+            {stop, normal, State}
+    end.
+
+highest_supported_version(_) ->
+    {3, 1}.
+
+send_major(NextStateInfo) ->
+    #state{version = {Major, _}} = element(3, NextStateInfo),
+    if Major =:= 2 ->
+            send_packet(<<1:8>>, NextStateInfo);
+       true ->
+            send_packet(<<Major:8>>, NextStateInfo)
+    end.
+
+send_minor(NextStateInfo) ->
+    #state{version = {_, Minor}} = element(3, NextStateInfo),
+    send_packet(<<Minor:8>>, NextStateInfo).
+
+finish_zmtp13_handshake(NextStateInfo) ->
+    #state{identity = Identity} = element(3, NextStateInfo),
+    Packet = <<Identity/binary>>,
+    send_packet(Packet, NextStateInfo).
+
+%% ZMTP 2.0, after the version 2.0 has been agreed, we can send the
+%% rest of the handshake in one go
+finish_zmtp15_handshake(NextStateInfo) ->
+    #state{type = Type, identity = Identity} = element(3, NextStateInfo),
+    SocketType = ezmq_frame:socket_type_int(Type),
+    Length = byte_size(Identity),
+    Packet = <<SocketType:8, 0:8, Length:8, Identity/binary>>,
+    send_packet(Packet, NextStateInfo).
+
+send_greeting(NextStateInfo) ->
+    #state{version = Version, identity = Identity} = element(3, NextStateInfo),
+    Packet = ezmq_frame:encode_greeting(Version, undefined, Identity),
+    send_packet(Packet, NextStateInfo).
+
 send_frames(Frames, NextStateInfo) ->
-    Packet = ezmq_frame:encode(Frames),
+    #state{version = Version} = element(3, NextStateInfo),
+    Packet = ezmq_frame:encode(Version, Frames),
     send_packet(Packet, NextStateInfo).
 
 send_packet(Packet, NextStateInfo) ->
@@ -379,3 +555,20 @@ send_packet(Packet, NextStateInfo) ->
             lager:debug("error - Reason: ~p", [Reason]),
             {stop, Reason, State}
     end.
+
+is_compatible_socket(pair, pair) -> ok;
+is_compatible_socket(pub, sub) -> ok;
+is_compatible_socket(sub, pub) -> ok;
+is_compatible_socket(req, rep) -> ok;
+is_compatible_socket(req, router) -> ok;
+is_compatible_socket(rep, req) -> ok;
+is_compatible_socket(rep, dealer) -> ok;
+is_compatible_socket(dealer, rep) -> ok;
+is_compatible_socket(dealer, dealer) -> ok;
+is_compatible_socket(dealer, router) -> ok;
+is_compatible_socket(router, req) -> ok;
+is_compatible_socket(router, dealer) -> ok;
+is_compatible_socket(router, router) -> ok;
+is_compatible_socket(pull, push) -> ok;
+is_compatible_socket(push, pull) -> ok;
+is_compatible_socket(_, _) -> incompatible.

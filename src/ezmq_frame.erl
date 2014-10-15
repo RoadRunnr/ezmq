@@ -4,83 +4,127 @@
 
 -module(ezmq_frame).
 
--export([decode/2, encode/1]).
+-export([socket_type_atom/1, socket_type_int/1]).
+-export([decode/2, encode/2]).
 -export([decode_greeting/1, encode_greeting/3]).
 
--define(FLAG_NONE, 16#00).
--define(FLAG_MORE, 16#01).
--define(FLAG_LABEL, 16#80).
+socket_type_int(pair)  ->       16#00;
+socket_type_int(pub)   ->       16#01;
+socket_type_int(sub)   ->       16#02;
+socket_type_int(req)   ->       16#03;
+socket_type_int(rep)   ->       16#04;
+socket_type_int(dealer) ->      16#05;
+socket_type_int(router) ->      16#06;
+socket_type_int(pull)   ->      16#07;
+socket_type_int(push)   ->      16#08.
+
+socket_type_atom(16#00) ->      pair;
+socket_type_atom(16#01) ->      pub;
+socket_type_atom(16#02) ->      sub;
+socket_type_atom(16#03) ->      req;
+socket_type_atom(16#04) ->      rep;
+socket_type_atom(16#05) ->      dealer;
+socket_type_atom(16#06) ->      router;
+socket_type_atom(16#07) ->      pull;
+socket_type_atom(16#08) ->      push.
 
 bool(0) -> false;
-bool(1) -> true.
+bool(_) -> true.
 
-frame_type(0, 1) -> label;
-frame_type(_, _) -> normal.
+bool2i(false) -> 0;
+bool2i(true)  -> 1.
 
-%% ZeroMQ RFC 13 says IDFlags should be 0x00 in the greeting, however the actuall
-%% libzmq2 implementation send 0x7E, so only insist on the LSB beeing zero
-
-decode_greeting(Data = <<16#FF, Length:64/unsigned-integer, _:7, IDFlags:1/integer, Rest/binary>>) ->
-    decode_greeting({1,0}, Length, IDFlags, Rest, Data);
-decode_greeting(Data = <<Length:8/integer, _:7, IDFlags:1/integer, Rest/binary>>) ->
-    decode_greeting({1,0}, Length, IDFlags, Rest, Data);
+decode_greeting(Data = <<16#FF, IdLength:64, IdFlag:8/integer, Rest/binary>>) ->
+    validate_greeting(long, IdLength, IdFlag, Rest, Data);
+decode_greeting(Data = <<IdLength:8/integer, IdFlag:8/integer, Rest/binary>>) ->
+    validate_greeting(short, IdLength, IdFlag, Rest, Data);
 decode_greeting(Data) ->
     {more, Data}.
 
-%% libzmq 2.1 seems to ignore the IDFlag....
+validate_greeting(short, IdLength, IdFlag, Rest, _Data)
+  when IdLength > 0 andalso IdFlag band 16#01 == 0 ->
+    {{short, IdLength - 1}, Rest};
+validate_greeting(long, IdLength, 16#7F, Rest, _Data)
+  when IdLength > 0 andalso IdLength < 256 ->
+    {{long, IdLength - 1}, Rest};
+validate_greeting(_FrameType, _IdLength, _IdFlag, _Rest, Data) ->
+    {invalid, Data}.
 
-decode_greeting({1,0}, FrameLen, _, Msg, Data) when size(Msg) < FrameLen - 1->
+decode({1,0}, Data = <<16#FF, Length:64/unsigned-integer, Flags:8/bits, Rest/binary>>) ->
+    decode_13(Length, Flags, Rest, Data);
+decode({1,0}, Data = <<Length:8/integer, Flags:8/bits, Rest/binary>>) ->
+    decode_13(Length, Flags, Rest, Data);
+decode({1,0}, Data) ->
     {more, Data};
-decode_greeting(Ver = {1,0}, 1, _IDFlags, Msg, _Data) ->
-    {{greeting, Ver, undefined, <<>>}, Msg};
-decode_greeting(Ver = {1,0}, FrameLen, _IDFlags, Msg, _Data) ->
-    IDLen = FrameLen - 1,
-    <<Identity:IDLen/bytes, Rem/binary>> = Msg,
-    {{greeting, Ver, undefined, Identity}, Rem}.
 
-decode(Ver, Data = <<16#FF, Length:64/unsigned-integer, Flags:8/bits, Rest/binary>>) ->
-    decode(Ver, Length, Flags, Rest, Data);
-decode(Ver, Data = <<Length:8/integer, Flags:8/bits, Rest/binary>>) ->
-    decode(Ver, Length, Flags, Rest, Data);
+%% short frame
+decode({2,0}, Data = <<0:6, 0:1, More:1, Length:8/unsigned-integer, Rest/binary>>) ->
+    decode_15(Length, More, Rest, Data);
+%% long frame
+decode({2,0}, Data = <<0:6, 1:1, More:1, Length:64/unsigned-integer, Rest/binary>>) ->
+    decode_15(Length, More, Rest, Data);
+decode({2,0}, Data = <<0:6, _:2, _/binary>>) ->
+    {more, Data};
+
 decode(_Ver, Data) ->
-    {more, Data}.
+    {invalid, Data}.
 
-decode(_Ver, FrameLen, _Flags, _Msg, Data) when FrameLen =:= 0 ->
+decode_13(FrameLen, _Flags, _Msg, Data) when FrameLen =:= 0 ->
     {invalid, Data};
-decode(_Ver, FrameLen, _Flags, Msg, Data) when size(Msg) < FrameLen - 1->
+decode_13(FrameLen, _Flags, Msg, Data) when size(Msg) < FrameLen - 1->
     {more, Data};
-decode(Ver, FrameLen, <<Label:1, _:6, More:1>>, Msg, _Data) ->
+decode_13(FrameLen, <<_:7, More:1>>, Msg, _Data) ->
     FLen = FrameLen - 1,
     <<Frame:FLen/bytes, Rem/binary>> = Msg,
-    {{bool(More), {frame_type(Ver, Label), Frame}}, Rem}.
+    {{bool(More), {normal, Frame}}, Rem}.
 
+decode_15(FrameLen, _More, Msg, Data) when size(Msg) < FrameLen ->
+    {more, Data};
+decode_15(FrameLen, More, Msg, _Data) ->
+    <<Frame:FrameLen/bytes, Rest/binary>> = Msg,
+    {{bool(More), {normal, Frame}}, Rest}.
+
+encode_greeting({Major,_}, _SocketType, Identity)
+  when Major > 1, is_binary(Identity), byte_size(Identity) =< 254 ->
+    Length = byte_size(Identity) + 1,
+    <<16#FF, Length:64, 16#7F>>;
 encode_greeting({1,0}, _SocketType, Identity)
-  when is_binary(Identity) ->
-    encode(Identity, ?FLAG_NONE, [], []).
+  when is_binary(Identity), byte_size(Identity) =< 254 ->
+    Length = byte_size(Identity) + 1,
+    <<Length:8, 16#00, Identity/binary>>;
 
-encode(Msg) when is_list(Msg) ->
-    encode(Msg, []).
+encode_greeting(Version, SocketType, Identity) ->
+    error(badarg, [Version, SocketType, Identity]).
 
-encode([], Acc) ->
+encode(Version, Msg) when is_list(Msg) ->
+    encode(Version, Msg, []).
+
+encode(_, [], Acc) ->
     list_to_binary(lists:reverse(Acc));
-encode([{label, Head}|Rest], Acc) ->
-    encode(Head, ?FLAG_LABEL, Rest, Acc);
-encode([{normal, Head}|Rest], Acc) when is_binary(Head); is_list(Head) ->
-    encode(Head, ?FLAG_NONE, Rest, Acc);
-encode([Head|Rest], Acc) when is_binary(Head); is_list(Head) ->
-    encode(Head, ?FLAG_NONE, Rest, Acc).
+encode(Version, [Head = {_, Data}|Rest], Acc) when is_binary(Data); is_list(Data) ->
+    encode(Version, Rest, [encode_frame(Version, Head, length(Rest) =/= 0)|Acc]);
+encode(_Version, [Head|_Rest], _Acc) ->
+    error(badarg, [Head]).
 
-encode(Frame, Flags, Rest, Acc) when is_list(Frame) ->
-    encode(iolist_to_binary(Frame), Flags, Rest, Acc);
-encode(Frame, Flags, Rest, Acc) when is_binary(Frame) ->
-    Length = size(Frame) + 1,
+encode_frame(Version, {Type, Data}, More) when is_list(Data) ->
+    encode_frame(Version, Type, iolist_to_binary(Data), More);
+encode_frame(Version, {Type, Data}, More) ->
+    encode_frame(Version, Type, Data, More).
+
+encode_frame({1, _}, normal, Data, More) ->
+    Length = size(Data) + 1,
     Header = if
                  Length >= 255 -> <<16#FF, Length:64>>;
                  true -> <<Length:8>>
              end,
-    Flags1 = if
-                 length(Rest) =/= 0 -> Flags bor ?FLAG_MORE;
-                 true -> Flags
-             end,
-    encode(Rest, [<<Header/binary, Flags1:8, Frame/binary>>|Acc]).
+    <<Header/binary, 0:7, (bool2i(More)):1, Data/binary>>;
 
+encode_frame({2, 0}, normal, Data, More) when size(Data) =< 255 ->
+    Length = size(Data),
+    <<0:6, 0:1, (bool2i(More)):1, Length:8, Data/binary>>;
+encode_frame({2, 0}, normal, Data, More) ->
+    Length = size(Data),
+    <<0:6, 1:1, (bool2i(More)):1, Length:64, Data/binary>>;
+
+encode_frame(Version, Type, Data, More) ->
+    error(badarg, [Version, Type, Data, More]).

@@ -4,6 +4,7 @@
 
 -record(ezmq_socket, {
           owner                  :: pid(),
+          type                   :: atom(),
           fsm                    :: term(),
           identity = <<>>        :: binary(),
 

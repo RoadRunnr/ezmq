@@ -37,8 +37,9 @@
 %%     return: ok | queue
 %%
 %% {'deliver_recv', Transport, IdMsg}
-%%     is IdMsg recived on Transport permited in the current state
-%%     return: ok | {error, Reason}
+%%     is IdMsg recived on Transport permited in the current state and/or
+%%     do we need to treat is as a socket fsm control message
+%%     return: ok | control | {error, Reason}
 %%
 %% 'recv':
 %%     is it permited the execute a recv call in the current state,
@@ -87,7 +88,7 @@ do(Action, MqSState = #ezmq_socket{fsm = Fsm}) ->
     #fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
     case Module:StateName(do, Action, MqSState, State) of
         {error, Reason} ->
-            error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Action, Reason, MqSState, State]),
+            lager:error("socket fsm for ~w exited with ~p, (~p,~p)~n", [Action, Reason, MqSState, State]),
             error(Reason);
         {next_state, NextStateName, NextMqSState, NextState} ->
             lager:debug("ezmq_socket_fsm: state: ~w, Action: ~w, next_state: ~w", [StateName, Action, NextStateName]),
@@ -99,7 +100,7 @@ close(Transport, MqSState = #ezmq_socket{fsm = Fsm}) ->
     #fsm_state{module = Module, state_name = StateName, state = State} = Fsm,
     case Module:close(StateName, Transport, MqSState, State) of
         {error, Reason} ->
-            error_logger:error_msg("socket fsm for ~w exited with ~p, (~p,~p)~n", [Transport, Reason, MqSState, State]),
+            lager:error("socket fsm for ~w exited with ~p, (~p,~p)~n", [Transport, Reason, MqSState, State]),
             error(Reason);
         {next_state, NextStateName, NextMqSState, NextState} ->
             lager:debug("ezmq_socket_fsm: state: ~w, Transport: ~w, next_state: ~w", [StateName, Transport, NextStateName]),

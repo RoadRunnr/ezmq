@@ -52,12 +52,22 @@ idle(check, dequeue_send, #ezmq_socket{transports = Transports}, _State) ->
     {ok, Transports};
 idle(check, dequeue_send, _MqSState, _State) ->
     keep;
+idle(check, {deliver_recv, _Transport, {_, [{normal, <<0:8>>}]}}, _MqSState, _State) ->
+    control;
+idle(check, {deliver_recv, _Transport, {_, [{normal, <<1:8, _/binary>>}]}}, _MqSState, _State) ->
+    control;
 idle(check, _, _MqSState, _State) ->
     {error, fsm};
 
 idle(do, queue_send, MqSState, State) ->
     {next_state, idle, MqSState, State};
 idle(do, {deliver_send, _Transport}, MqSState, State) ->
+    {next_state, idle, MqSState, State};
+idle(do, {control, {PeerId, [{normal, <<0:8>>}]}}, MqSState, State) ->
+    %% TODO: unsubscribe all topic for this peer
+    {next_state, idle, MqSState, State};
+idle(do, {control, {PeerId, [{normal, <<1:8, Topic/binary>>}]}}, MqSState, State) ->
+    %% TODO: subscribe the topic for this peer
     {next_state, idle, MqSState, State};
 idle(do, _, _MqSState, _State) ->
     {error, fsm}.

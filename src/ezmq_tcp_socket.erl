@@ -17,7 +17,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/3, start_link/3]).
+-export([start/4, start_link/4]).
 
 %% gen_listener_tcp callbacks
 -export([init/1, handle_accept/2, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -35,21 +35,21 @@
 %% ====================================================================
 
 %% @doc Start the server.
-start(Identity, Port, Opts) ->
-    gen_listener_tcp:start(?MODULE, [self(), Identity, Port, Opts], [?SERVER_OPTS]).
+start(Type, Identity, Port, Opts) ->
+    gen_listener_tcp:start(?MODULE, [self(), Type, Identity, Port, Opts], [?SERVER_OPTS]).
 
-start_link(Identity, Port, Opts) ->
-    gen_listener_tcp:start_link(?MODULE, [self(), Identity, Port, Opts], [?SERVER_OPTS]).
+start_link(Type, Identity, Port, Opts) ->
+    gen_listener_tcp:start_link(?MODULE, [self(), Type, Identity, Port, Opts], [?SERVER_OPTS]).
 
-init([MqSocket, Identity, Port, Opts]) ->
-    {ok, {Port, Opts}, {MqSocket, Identity}}.
+init([MqSocket, Type, Identity, Port, Opts]) ->
+    {ok, {Port, Opts}, {MqSocket, Type, Identity}}.
 
-handle_accept(Sock, State = {MqSocket, Identity}) ->
+handle_accept(Sock, State = {MqSocket,Type,  Identity}) ->
     case ezmq_link:start_connection() of
         {ok, Pid} ->
-            ezmq_link:accept(MqSocket, Identity, Pid, Sock);
-        _ ->
-            error_logger:error_report([{event, accept_failed}]),
+            ezmq_link:accept(MqSocket, Type, Identity, Pid, Sock);
+        Other ->
+            lager:warning("failed to handle accept with error ~p", [Other]),
             gen_tcp:close(Sock)
     end,
     {noreply, State}.
