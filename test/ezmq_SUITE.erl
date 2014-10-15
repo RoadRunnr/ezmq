@@ -97,7 +97,7 @@ req_tcp_connecting_trash(_Config) ->
           end),
     {ok, S} = ezmq:socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    receive 
+    receive
         done -> ok
     after
         1000 ->
@@ -128,7 +128,7 @@ rep_tcp_connecting_trash(_Config) ->
                   gen_tcp:close(L),
                   Self ! done
           end),
-    receive 
+    receive
         done -> ok
     after
         1000 ->
@@ -154,7 +154,7 @@ req_tcp_fragment(_Config) ->
           end),
     {ok, S} = ezmq:socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
-    receive 
+    receive
         connected -> ok
     after
         1000 ->
@@ -208,7 +208,7 @@ basic_test_dealer_req(IP, Port, Cnt2, Mode, Size) ->
     lists:foreach(fun(S) -> ok = ezmq:close(S) end, S2).
 
 basic_tests_dealer(_Config) ->
-    basic_test_dealer_req({127,0,0,1}, 5559, 10, passive, 3),
+    %% basic_test_dealer_req({127,0,0,1}, 5559, 10, passive, 3), %% dealer/req is not compatible
     basic_test_dealer_rep({127,0,0,1}, 5560, 10, passive, 3).
 
 basic_test_router_req(IP, Port, Cnt2, Mode, Size) ->
@@ -296,7 +296,7 @@ join_procs(N) ->
 shutdown_stress_worker_loop(_P, 0) ->
     ok;
 shutdown_stress_worker_loop(P, N) ->
-    {ok, S2} = ezmq:socket([{type, rep}, {active, false}]),
+    {ok, S2} = ezmq:socket([{type, req}, {active, false}]),
     spawn(?MODULE, worker, [self(), S2, 5558 + P]),
     shutdown_stress_worker_loop(P, N-1).
 
@@ -359,7 +359,7 @@ ping_pong({S1, S2}, Msg, active) ->
     assert_mbox({zmq, S1, [Msg]}),
     assert_mbox_empty(),
     ok;
-    
+
 ping_pong({S1, S2}, Msg, passive) ->
     ok = ezmq:send(S1, [Msg]),
     {ok, [Msg]} = ezmq:recv(S2),
@@ -379,6 +379,7 @@ basic_tests(IP, Port, Type1, Type2, Mode, Size) ->
 init_per_suite(Config) ->
     ok = application:start(sasl),
     lager:start(),
+    %% lager:set_loglevel(lager_console_backend, debug),
     ok = application:start(gen_listener_tcp),
     ok = application:start(ezmq),
     Config.
