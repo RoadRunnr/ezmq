@@ -19,22 +19,22 @@ reqrep_tcp_large_passive(_Config) ->
     basic_tests({127,0,0,1}, 5557, req, rep, passive, 256).
 
 req_tcp_bind_close(_Config) ->
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_server_socket([{type, req}, {active, false}]),
     ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     ezmq:close(S).
 
 req_tcp_connect_close(_Config) ->
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, []),
     ezmq:close(S).
 
 req_tcp_connect_fail(_Config) ->
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
     {error,nxdomain} = ezmq:connect(S, tcp, "undefined.undefined", 5555, []),
     ezmq:close(S).
 
 req_tcp_connect_timeout(_Config) ->
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     ct:sleep(2000),
     ezmq:close(S).
@@ -46,22 +46,22 @@ req_tcp_connecting_timeout(_Config) ->
                   ct:sleep(15000),   %% keep socket alive for at least 10sec...
                   gen_tcp:close(S1)
           end),
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     ct:sleep(15000),    %% wait for the connection setup timeout
     ezmq:close(S).
 dealer_tcp_bind_close(_Config) ->
-    {ok, S} = ezmq:socket([{type, dealer}, {active, false}]),
+    {ok, S} = ezmq_server_socket([{type, dealer}, {active, false}]),
     ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     ezmq:close(S).
 
 dealer_tcp_connect_close(_Config) ->
-    {ok, S} = ezmq:socket([{type, dealer}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, dealer}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, []),
     ezmq:close(S).
 
 dealer_tcp_connect_timeout(_Config) ->
-    {ok, S} = ezmq:socket([{type, dealer}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, dealer}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
@@ -76,7 +76,7 @@ dealer_tcp_connecting_timeout(_Config) ->
                   ct:sleep(15000),   %% keep socket alive for at least 10sec...
                   gen_tcp:close(S1)
           end),
-    {ok, S} = ezmq:socket([{type, dealer}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, dealer}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
@@ -95,7 +95,7 @@ req_tcp_connecting_trash(_Config) ->
                   gen_tcp:close(S1),
                   Self ! done
           end),
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     receive
         done -> ok
@@ -106,7 +106,7 @@ req_tcp_connecting_trash(_Config) ->
     ezmq:close(S).
 
 rep_tcp_connecting_timeout(_Config) ->
-    {ok, S} = ezmq:socket([{type, rep}, {active, false}]),
+    {ok, S} = ezmq_server_socket([{type, rep}, {active, false}]),
     ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     spawn(fun() ->
                   {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
@@ -118,7 +118,7 @@ rep_tcp_connecting_timeout(_Config) ->
 
 rep_tcp_connecting_trash(_Config) ->
     Self = self(),
-    {ok, S} = ezmq:socket([{type, rep}, {active, false}]),
+    {ok, S} = ezmq_server_socket([{type, rep}, {active, false}]),
     ok = ezmq:bind(S, tcp, 5555, [{reuseaddr, true}]),
     spawn(fun() ->
                   {ok, L} = gen_tcp:connect({127,0,0,1},5555,[{active, false}, {packet, raw}]),
@@ -152,7 +152,7 @@ req_tcp_fragment(_Config) ->
                   gen_tcp:close(S1),
                   Self ! done
           end),
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
     ok = ezmq:connect(S, tcp, {127,0,0,1}, 5555, [{timeout, 1000}]),
     receive
         connected -> ok
@@ -164,10 +164,26 @@ req_tcp_fragment(_Config) ->
     {ok, [<<"Hello">>]} = ezmq:recv(S),
     ezmq:close(S).
 
+ezmq_client_socket(Opts) ->
+    COpts = case erlang:get(client_version) of
+	       Version = {_,_} ->
+		    [{version, Version}|Opts];
+	       _ -> Opts
+	   end,
+    ezmq:socket(COpts).
+
+ezmq_server_socket(Opts) ->
+    SOpts = case erlang:get(server_version) of
+	       Version = {_,_} ->
+		    [{version, Version}|Opts];
+	       _ -> Opts
+	   end,
+    ezmq:socket(SOpts).
+
 create_multi_connect(Type, Active, IP, Port, 0, Acc) ->
     Acc;
 create_multi_connect(Type, Active, IP, Port, Cnt, Acc) ->
-    {ok, S2} = ezmq:socket([{type, Type}, {active, Active}]),
+    {ok, S2} = ezmq_client_socket([{type, Type}, {active, Active}]),
     ok = ezmq:connect(S2, tcp, IP, Port, []),
     create_multi_connect(Type, Active, IP, Port, Cnt - 1, [S2|Acc]).
 
@@ -178,7 +194,7 @@ create_bound_pair_multi(Type1, Type2, Cnt2, Mode, IP, Port) ->
         Mode =:= passive ->
             false
     end,
-    {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}]),
+    {ok, S1} = ezmq_server_socket([{type, Type1}, {active, Active}]),
     ok = ezmq:bind(S1, tcp, Port, [{reuseaddr, true}]),
 
     S2 = create_multi_connect(Type2, Active, IP, Port, Cnt2, []),
@@ -271,7 +287,7 @@ shutdown_stress_test(_Config) ->
 shutdown_stress_loop(0) ->
     ok;
 shutdown_stress_loop(N) ->
-    {ok, S1} = ezmq:socket([{type, rep}, {active, false}]),
+    {ok, S1} = ezmq_server_socket([{type, rep}, {active, false}]),
     ok = ezmq:bind(S1, tcp, 5558 + N, [{reuseaddr, true}]),
     shutdown_stress_worker_loop(N, 100),
     ok = join_procs(100),
@@ -279,7 +295,7 @@ shutdown_stress_loop(N) ->
     shutdown_stress_loop(N-1).
 
 shutdown_no_blocking_test(_Config) ->
-    {ok, S} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S} = ezmq_server_socket([{type, req}, {active, false}]),
     ezmq:close(S).
 
 join_procs(0) ->
@@ -296,7 +312,7 @@ join_procs(N) ->
 shutdown_stress_worker_loop(_P, 0) ->
     ok;
 shutdown_stress_worker_loop(P, N) ->
-    {ok, S2} = ezmq:socket([{type, req}, {active, false}]),
+    {ok, S2} = ezmq_client_socket([{type, req}, {active, false}]),
     spawn(?MODULE, worker, [self(), S2, 5558 + P]),
     shutdown_stress_worker_loop(P, N-1).
 
@@ -312,8 +328,8 @@ create_bound_pair(Type1, Type2, Mode, IP, Port) ->
         Mode =:= passive ->
             false
     end,
-    {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}]),
-    {ok, S2} = ezmq:socket([{type, Type2}, {active, Active}]),
+    {ok, S1} = ezmq_server_socket([{type, Type1}, {active, Active}]),
+    {ok, S2} = ezmq_client_socket([{type, Type2}, {active, Active}]),
     ok = ezmq:bind(S1, tcp, Port, [{reuseaddr, true}]),
     ok = ezmq:connect(S2, tcp, IP, Port, []),
     {S1, S2}.
@@ -387,11 +403,44 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     Config.
 
+init_per_group(zmtp13, Config) ->
+    [{server_version, {1,0}}, {client_version, {1,0}}|Config];
+init_per_group(zmtp13_server, Config) ->
+    [{server_version, {1,0}}|Config];
+init_per_group(zmtp13_client, Config) ->
+    [{client_version, {1,0}}|Config];
+init_per_group(zmtp15, Config) ->
+    [{server_version, {2,0}}, {client_version, {2,0}}|Config];
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
+init_per_testcase(_TestCase, Config)  ->
+    erlang:put(server_version, proplists:get_value(server_version, Config)),
+    erlang:put(client_version, proplists:get_value(client_version, Config)),
+    Config.
+
+end_per_testcase(_TestCase, Config) ->
+    Config.
+
 suite() -> [{timetrap, 60000}].
 
 all() ->
-    [
-     reqrep_tcp_test_active, reqrep_tcp_test_passive,
+    [{group, zmtp13},
+     {group, zmtp13_server},
+     {group, zmtp13_client},
+     {group, zmtp15}].
+
+groups() ->
+    [{zmtp13, [], all_tests()},
+     {zmtp13_server, [], all_tests()},
+     {zmtp13_client, [], all_tests()},
+     {zmtp15, [], all_tests()}].
+
+all_tests() ->
+    [reqrep_tcp_test_active, reqrep_tcp_test_passive,
      reqrep_tcp_large_active, reqrep_tcp_large_passive,
      shutdown_no_blocking_test,
      req_tcp_connect_fail,
@@ -402,5 +451,4 @@ all() ->
      dealer_tcp_bind_close, dealer_tcp_connect_close, dealer_tcp_connect_timeout,
      basic_tests_rep_req, basic_tests_dealer, basic_tests_router,
      basic_tests_pub_sub,
-     shutdown_stress_test
-    ].
+     shutdown_stress_test].

@@ -8,7 +8,7 @@
 
 %% API
 -export([start_link/0]).
--export([start_connection/0, accept/5, connect/8, close/1]).
+-export([start_connection/0, accept/6, connect/9, close/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -68,12 +68,12 @@ start_link() ->
 start_connection() ->
     ezmq_link_sup:start_connection().
 
-accept(MqSocket, Type, Identity, Server, Socket) ->
+accept(MqSocket, Version, Type, Identity, Server, Socket) ->
     ok = gen_tcp:controlling_process(Socket, Server),
-    gen_fsm:send_event(Server, {accept, MqSocket, Type, Identity, Socket}).
+    gen_fsm:send_event(Server, {accept, MqSocket, Version, Type, Identity, Socket}).
 
-connect(Type, Identity, Server, tcp, Address, Port, TcpOpts, Timeout) ->
-    gen_fsm:send_event(Server, {connect, self(), Type, Identity, tcp, Address, Port, TcpOpts, Timeout}).
+connect(Version, Type, Identity, Server, tcp, Address, Port, TcpOpts, Timeout) ->
+    gen_fsm:send_event(Server, {connect, self(), Version, Type, Identity, tcp, Address, Port, TcpOpts, Timeout}).
 
 send(Server, Msg) ->
     gen_fsm:send_event(Server, {send, Msg}).
@@ -117,16 +117,18 @@ init([]) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
-setup({accept, MqSocket, Type, Identity, Socket}, State) ->
+setup({accept, MqSocket, Version, Type, Identity, Socket}, State) ->
     lager:debug("got setup"),
-    NewState = State#state{role = server, type = Type, mqsocket = MqSocket,
+    NewState = State#state{version = Version, role = server,
+                           type = Type, mqsocket = MqSocket,
                            identity = Identity, socket = Socket},
     lager:debug("NewState: ~p", [NewState]),
     send_greeting({next_state, open, NewState, ?CONNECT_TIMEOUT});
 
-setup({connect, MqSocket, Type, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
+setup({connect, MqSocket, Version, Type, Identity, tcp, Address, Port, TcpOpts, Timeout}, State) ->
     lager:debug("got connect: ~w, ~w", [Address, Port]),
-    State1 = State#state{role = client, type = Type, mqsocket = MqSocket,
+    State1 = State#state{version = Version, role = client,
+                         type = Type, mqsocket = MqSocket,
                          identity = Identity},
 
     %%TODO: socket options

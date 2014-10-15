@@ -93,6 +93,14 @@ erlzmq_identity(Socket, []) ->
 erlzmq_identity(Socket, Id) ->
     erlzmq:setsockopt(Socket, identity, Id).
 
+ezmq_socket(Opts) ->
+    SOpts = case erlang:get(ezmq_version) of
+	       Version = {_,_} ->
+		    [{version, Version}|Opts];
+	       _ -> Opts
+	   end,
+    ezmq:socket(SOpts).
+
 create_bound_pair_erlzmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port) ->
     Active = if
         Mode =:= active ->
@@ -101,7 +109,7 @@ create_bound_pair_erlzmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port)
             false
     end,
     {ok, S1} = erlzmq:socket(Ctx, [Type1, {active, Active}]),
-    {ok, S2} = ezmq:socket([{type, Type2}, {active, Active}, {identity, Id2}]),
+    {ok, S2} = ezmq_socket([{type, Type2}, {active, Active}, {identity, Id2}]),
     ok = erlzmq_identity(S1, Id1),
     ok = erlzmq:bind(S1, Transport),
     ok = ezmq:connect(S2, tcp, IP, Port, []),
@@ -117,7 +125,7 @@ create_bound_pair_ezmq(Ctx, Type1, Id1, Type2, Id2, Mode, Transport, IP, Port) -
         Mode =:= passive ->
             false
     end,
-    {ok, S1} = ezmq:socket([{type, Type1}, {active, Active}, {identity,Id1}]),
+    {ok, S1} = ezmq_socket([{type, Type1}, {active, Active}, {identity,Id1}]),
     {ok, S2} = erlzmq:socket(Ctx, [Type2, {active, Active}]),
     ok = erlzmq_identity(S2, Id2),
     ok = ezmq:bind(S1, tcp, Port, [{reuseaddr, true}]),
@@ -535,12 +543,29 @@ basic_tests_ezmq(Fun, Transport, IP, Port, Type1, Id1, Type2, Id2, Mode, Size) -
 init_per_suite(Config) ->
     application:start(sasl),
     lager:start(),
-    %% lager:set_loglevel(lager_console_backend, debug),
+    lager:set_loglevel(lager_console_backend, debug),
     application:start(gen_listener_tcp),
     application:start(ezmq),
     Config.
 
 end_per_suite(Config) ->
+    Config.
+
+init_per_group(zmtp13, Config) ->
+    [{ezmq_version, {1,0}}|Config];
+init_per_group(zmtp15, Config) ->
+    [{ezmq_version, {2,0}}|Config];
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
+init_per_testcase(_TestCase, Config)  ->
+    erlang:put(ezmq_version, proplists:get_value(ezmq_version, Config)),
+    Config.
+
+end_per_testcase(_TestCase, Config) ->
     Config.
 
 suite() -> [{timetrap, 60000}].
@@ -551,17 +576,26 @@ all() ->
             ct:pal("Skipping erlzmq tests"),
             [];
         _ ->
-            [
-             reqrep_tcp_test_active, reqrep_tcp_test_passive, reqrep_tcp_large_active, reqrep_tcp_large_passive,
-             dealerrep_tcp_test_active, dealerrep_tcp_test_passive,
-             dealerrouter_tcp_test_active, dealerrouter_tcp_test_passive,
-             reqdealer_tcp_test_active, reqdealer_tcp_test_passive,
-             reqrouter_tcp_test_active, reqrouter_tcp_test_passive,
-             reqrep_tcp_id_test_active, reqrep_tcp_id_test_passive,
-             dealerrep_tcp_id_test_active, dealerrep_tcp_id_test_passive,
-             dealerrouter_tcp_id_test_active, dealerrouter_tcp_id_test_passive,
-             reqdealer_tcp_id_test_active, reqdealer_tcp_id_test_passive,
-             reqrouter_tcp_id_test_active, reqrouter_tcp_id_test_passive
-
-            ]
+	    [{group, zmtp13},
+	     {group, zmtp15}]
     end.
+
+groups() ->
+    [{zmtp13, [], all_tests()},
+     {zmtp15, [], all_tests()}].
+
+f_all_tests() ->
+    [reqrep_tcp_id_test_active].
+
+
+all_tests() ->
+    [reqrep_tcp_test_active, reqrep_tcp_test_passive, reqrep_tcp_large_active, reqrep_tcp_large_passive,
+     dealerrep_tcp_test_active, dealerrep_tcp_test_passive,
+     dealerrouter_tcp_test_active, dealerrouter_tcp_test_passive,
+     reqdealer_tcp_test_active, reqdealer_tcp_test_passive,
+     reqrouter_tcp_test_active, reqrouter_tcp_test_passive,
+     reqrep_tcp_id_test_active, reqrep_tcp_id_test_passive,
+     dealerrep_tcp_id_test_active, dealerrep_tcp_id_test_passive,
+     dealerrouter_tcp_id_test_active, dealerrouter_tcp_id_test_passive,
+     reqdealer_tcp_id_test_active, reqdealer_tcp_id_test_passive,
+     reqrouter_tcp_id_test_active, reqrouter_tcp_id_test_passive].

@@ -227,14 +227,14 @@ init_socket(Owner, Type, Opts) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{type = Type, identity = Identity}) ->
+handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
     TcpOpts0 = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
     TcpOpts1 = case proplists:get_value(ip, Opts) of
                    undefined -> TcpOpts0;
                    I -> [{ip, I}|TcpOpts0]
                end,
     lager:debug("bind: ~p", [TcpOpts1]),
-    case ezmq_tcp_socket:start_link(Type, Identity, Port, TcpOpts1) of
+    case ezmq_tcp_socket:start_link(Version, Type, Identity, Port, TcpOpts1) of
         {ok, Pid} ->
             Listen = orddict:append(Pid, {tcp, Port, Opts}, MqSState#ezmq_socket.listen_trans),
             {reply, ok, MqSState#ezmq_socket{listen_trans = Listen}};
@@ -414,12 +414,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-do_connect(ConnectArgs = #cargs{family = tcp}, MqSState = #ezmq_socket{type = Type, identity = Identity}) ->
+do_connect(ConnectArgs = #cargs{family = tcp}, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
     lager:debug("starting connect: ~w", [ConnectArgs]),
     #cargs{address = Address, port = Port, tcpopts = TcpOpts,
            timeout = Timeout, failcnt = _FailCnt} = ConnectArgs,
     {ok, Transport} = ezmq_link:start_connection(),
-    ezmq_link:connect(Type, Identity, Transport, tcp, Address, Port, TcpOpts, Timeout),
+    ezmq_link:connect(Version, Type, Identity, Transport, tcp, Address, Port, TcpOpts, Timeout),
     Connecting = orddict:store(Transport, ConnectArgs, MqSState#ezmq_socket.connecting),
     MqSState#ezmq_socket{connecting = Connecting}.
 
@@ -631,6 +631,13 @@ do_setopts({active, true}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active});
 do_setopts({active, false}, MqSState) ->
     MqSState#ezmq_socket{mode = passive};
+do_setopts({version, Version}, MqSState) ->
+    case lists:member(Version, ?SUPPORTED_VERSIONS) of
+        true ->
+            MqSState#ezmq_socket{version = Version};
+        _ ->
+            erlang:error(badargs, [{version, Version}])
+    end;
 
 do_setopts(_, MqSState) ->
     MqSState.
