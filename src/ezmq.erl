@@ -219,8 +219,7 @@ init({Owner, Opts}) ->
 
 init_socket(Owner, Type, Opts) ->
     process_flag(trap_exit, true),
-    NeedEvents = proplists:get_value(need_events, Opts, false),
-    MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(), need_events = NeedEvents,
+    MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
                                 connecting = orddict:new(), listen_trans = orddict:new(), transports = [], remote_ids = orddict:new()},
     MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
     ezmq_socket_fsm:init(Type, Opts, MqSState1).
@@ -651,6 +650,8 @@ do_setopts({active, true}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active});
 do_setopts({active, false}, MqSState) ->
     MqSState#ezmq_socket{mode = passive};
+do_setopts({need_events, NeedEvents}, MqSState) when is_boolean(NeedEvents) ->
+    MqSState#ezmq_socket{need_events = NeedEvents};
 do_setopts({version, Version}, MqSState) ->
     case lists:member(Version, ?SUPPORTED_VERSIONS) of
         true ->

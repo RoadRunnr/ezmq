@@ -1,33 +1,33 @@
 %% This Source Code Form is subject to the terms of the Mozilla Public
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
--module(ezmq_event_tests).
+-module(ezmq_event_SUITE).
 
+-include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -define(RECEIVE_TIMEOUT, 100).
 
-complex_test_() ->
-    {foreach,
-        % Setup fun
-        fun() ->
-            application:ensure_all_started(ezmq)
-        end,
-        % Destruct fun
-        fun(_) ->
-            application:stop(ezmq)
-        end,
-        [
-            {inorder, [
-                {"Client connected/closed events test.", fun ezmq_client_events_t/0},
-                {"Server accepted/closed events test.", fun ezmq_server_events_t/0},
-                {"No events test.", fun no_events_t/0}
-            ]}
-        ]
-    }.
+-compile(export_all).
+
+init_per_suite(Config) ->
+    application:ensure_all_started(ezmq),
+    Config.
 %%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-ezmq_server_events_t() ->
+end_per_suite(Config) ->
+    application:stop(ezmq),
+    Config.
+%%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+all() ->
+    [ezmq_client_events_t, ezmq_server_events_t, no_events_t].
+%%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+%%--------------------------------------------------------------------
+%% @doc Server accepted/closed events test.
+%%--------------------------------------------------------------------
+ezmq_server_events_t(Contig) ->
     clear_mailbox(),
     % Start server
     IP = {127,0,0,1},
@@ -78,10 +78,14 @@ ezmq_server_events_t() ->
         ?RECEIVE_TIMEOUT ->
             ok
     end,
-    ezmq:close(ServerSocket).
+    ezmq:close(ServerSocket),
+    Contig.
 %%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-ezmq_client_events_t() ->
+%%--------------------------------------------------------------------
+%% @doc Client connected/closed events test.
+%%--------------------------------------------------------------------
+ezmq_client_events_t(Contig) ->
     clear_mailbox(),
     % Start server
     IP = {127,0,0,1},
@@ -132,10 +136,14 @@ ezmq_client_events_t() ->
         ?RECEIVE_TIMEOUT ->
             ok
     end,
-    ezmq:close(ServerSocket).
+    ezmq:close(ServerSocket),
+    Contig.
 %%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-no_events_t() ->
+%%--------------------------------------------------------------------
+%% @doc No events test.
+%%--------------------------------------------------------------------
+no_events_t(Contig) ->
     clear_mailbox(),
     % Start server
     IP = {127,0,0,1},
@@ -159,7 +167,8 @@ no_events_t() ->
     after
         ?RECEIVE_TIMEOUT ->
             ok
-    end.
+    end,
+    Contig.
 %%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 clear_mailbox() ->
