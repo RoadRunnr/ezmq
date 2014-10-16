@@ -1,20 +1,13 @@
 language: erlang
 
 otp_release:
-   - R15B01
-   - R15B02
    - R15B03
-   - R16B01
-   - R16B02
-   - R16B03
    - R16B03-1
-   - 17.0
-   - 17.1
    - 17.3
 
 matrix:
   include:
-   - otp_release: 17.1
+   - otp_release: 17.3
      env: ZEROMQ_VERSION=v2.2.0
 
 script:
@@ -26,4 +19,4 @@ install:
   - sudo apt-get install uuid-dev
 
 notifications:
-  email: none #aschultz@tpip.net
+  email: aschultz@tpip.net
