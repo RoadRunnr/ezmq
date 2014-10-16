@@ -16,7 +16,7 @@
 -export([bind/4, connect/5, close/1]).
 -export([recv/1, recv/2]).
 -export([send/2]).
--export([setopts/2]).
+-export([setopts/2, sockname/1]).
 
 %% Internal exports
 -export([deliver_recv/2, deliver_accept/2, deliver_connect/2, deliver_close/1]).
@@ -96,6 +96,9 @@ recv(Socket, Timeout) ->
 
 setopts(Socket, Opts) ->
     gen_server:call(Socket, {setopts, Opts}).
+
+sockname(Socket) ->
+    gen_server:call(Socket, sockname).
 
 %%%===================================================================
 %%% internal API
@@ -295,7 +298,12 @@ handle_call({send, Msg}, From, State) ->
 
 handle_call({setopts, Opts}, _From, State) ->
     NewState = lists:foldl(fun do_setopts/2, State, proplists:unfold(Opts)),
-    {reply, ok, NewState}.
+    {reply, ok, NewState};
+
+handle_call(sockname, _From, #ezmq_socket{listen_trans = ListenTrans, transports = Transports} = State) ->
+    Reply = orddict:fold(fun do_sockname/3, [], ListenTrans) ++
+	lists:foldl(fun do_sockname/2, [], Transports),
+    {reply, {ok, Reply}, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -645,6 +653,22 @@ do_setopts({version, Version}, MqSState) ->
 
 do_setopts(_, MqSState) ->
     MqSState.
+
+do_sockname(Transport, _Opts, Acc) ->
+    case ezmq_tcp_socket:sockname(Transport) of
+	{ok, SockName} ->
+	    [SockName|Acc];
+	_ ->
+	    Acc
+    end.
+
+do_sockname(Transport, Acc) ->
+    case ezmq_link:sockname(Transport) of
+	{ok, SockName} ->
+	    [SockName|Acc];
+	_ ->
+	    Acc
+    end.
 
 validate_address(Address) when is_list(Address)  -> inet:gethostbyname(Address);
 validate_address(Address) when is_tuple(Address) -> inet:gethostbyaddr(Address);
