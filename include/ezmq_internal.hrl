@@ -10,6 +10,7 @@
           type                   :: atom(),
           fsm                    :: term(),
           identity = <<>>        :: binary(),
+          need_events = false    :: boolean(),
 
           %% delivery mechanism
           mode = passive         :: 'active'|'active_once'|'passive',

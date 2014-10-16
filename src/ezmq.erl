@@ -154,12 +154,23 @@ transports_is_active(Transport, #ezmq_socket{transports = Transports}) ->
     lists:member(Transport, Transports).
 
 transports_activate(Transport, RemoteId, MqSState = #ezmq_socket{transports = Transports}) ->
+    link(Transport),
     MqSState1 = remote_id_add(Transport, RemoteId, MqSState),
     MqSState1#ezmq_socket{transports = [Transport|Transports]}.
 
 transports_deactivate(Transport, MqSState = #ezmq_socket{transports = Transports}) ->
+    unlink(Transport),
     MqSState1 = remote_id_del(Transport, MqSState),
     MqSState1#ezmq_socket{transports = lists:delete(Transport, Transports)}.
+
+get_remote_ids_by_transport(Transport, #ezmq_socket{remote_ids = RemoteIdsOdict}) ->
+    GetRemoveIdsFun =
+        fun(Key, Value, RemoteIds) when Value =:= Transport ->
+                [Key | RemoteIds];
+            (_, _, RemoteIds) ->
+                RemoteIds
+        end,
+    orddict:fold(GetRemoveIdsFun, [], RemoteIdsOdict).
 
 transports_while(Fun, Data, Default, #ezmq_socket{transports = Transports}) ->
     do_transports_while(Fun, Data, Transports, Default).
@@ -208,7 +219,8 @@ init({Owner, Opts}) ->
 
 init_socket(Owner, Type, Opts) ->
     process_flag(trap_exit, true),
-    MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
+    NeedEvents = proplists:get_value(need_events, Opts, false),
+    MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(), need_events = NeedEvents,
                                 connecting = orddict:new(), listen_trans = orddict:new(), transports = [], remote_ids = orddict:new()},
     MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
     ezmq_socket_fsm:init(Type, Opts, MqSState1).
@@ -250,7 +262,8 @@ handle_call({connect, tcp, Address, Port, Opts}, _From, State) ->
     NewState = do_connect(ConnectArgs, State),
     {reply, ok, NewState};
 
-handle_call(close, _From, State) ->
+handle_call(close, _From, #ezmq_socket{remote_ids = RemoteIds} = State) ->
+    [send_owner_event(RemoteId, closed, State) || {RemoteId, _} <- RemoteIds],
     {stop, normal, ok, State};
 
 handle_call({recv, _Timeout}, _From, #ezmq_socket{mode = Mode} = State)
@@ -305,14 +318,15 @@ handle_call({setopts, Opts}, _From, State) ->
 %%--------------------------------------------------------------------
 
 handle_cast({deliver_accept, Transport, RemoteId}, State) ->
-    link(Transport),
     State1 = transports_activate(Transport, RemoteId, State),
+    send_owner_event(RemoteId, accepted, State1),
     lager:debug("DELIVER_ACCPET: ~p", [lager:pr(State1, ?MODULE)]),
     State2 = send_queue_run(State1),
     {noreply, State2};
 
 handle_cast({deliver_connect, Transport, {ok, RemoteId}}, State) ->
     State1 = transports_activate(Transport, RemoteId, State),
+    send_owner_event(RemoteId, connected, State1),
     lager:debug("DELIVER_CONNECT: ~p", [lager:pr(State1, ?MODULE)]),
     State2 = send_queue_run(State1),
     {noreply, State2};
@@ -334,8 +348,8 @@ handle_cast({deliver_connect, Transport, Reply}, State = #ezmq_socket{connecting
     end;
 
 handle_cast({deliver_close, Transport}, State = #ezmq_socket{connecting = Connecting}) ->
-    unlink(Transport),
     State0 = transports_deactivate(Transport, State),
+    [send_owner_event(RemoteId, closed, State0) || RemoteId <- get_remote_ids_by_transport(Transport, State)],
     State1 = queue_close(Transport, State0),
     State2 = ezmq_socket_fsm:close(Transport, State1),
     State3 = case orddict:find(Transport, Connecting) of 
@@ -505,6 +519,12 @@ send_owner(Transport, IdMsg, #ezmq_socket{owner = Owner, mode = Mode} = State)
     Owner ! {zmq, self(), ezmq_socket_fsm:decap_msg(Transport, IdMsg, State)},
     NewState = ezmq_socket_fsm:do({deliver, Transport}, State),
     next_mode(NewState).
+
+%% send a specific event to the owner.
+send_owner_event(_RemoveId, _Event, #ezmq_socket{need_events = false}) ->
+    ok;
+send_owner_event(RemoveId, Event, #ezmq_socket{owner = Owner}) ->
+    Owner ! {zmq_event, self(), {RemoveId, Event}}.
 
 next_mode(#ezmq_socket{mode = active} = State) ->
     queue_run(State);
