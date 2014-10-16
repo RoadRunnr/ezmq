@@ -9,6 +9,7 @@
 %% API
 -export([start_link/0]).
 -export([start_connection/0, accept/6, connect/9, close/1]).
+-export([sockname/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -77,6 +78,9 @@ connect(Version, Type, Identity, Server, tcp, Address, Port, TcpOpts, Timeout) -
 
 send(Server, Msg) ->
     gen_fsm:send_event(Server, {send, Msg}).
+
+sockname(Server) ->
+    gen_fsm:sync_send_all_state_event(Server, sockname).
 
 close(Server) ->
         gen_fsm:sync_send_all_state_event(Server, close).
@@ -315,6 +319,21 @@ handle_event(_Event, StateName, State) ->
 %%--------------------------------------------------------------------
 handle_sync_event(close, _From, _StateName, State) ->
     {stop, normal, ok, State};
+
+handle_sync_event(sockname, _From, StateName, #state{socket = Socket} = State)
+  when is_port(Socket)  ->
+    Reply =
+	case inet:sockname(Socket) of
+	    {ok, {Address, Port}} ->
+		{ok, {tcp, Address, Port}};
+	    Other ->
+		Other
+	end,
+    {reply, Reply, StateName, State};
+
+handle_sync_event(sockname, _From, StateName, State) ->
+    Reply = {error, closed},
+    {reply, Reply, StateName, State};
 
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,

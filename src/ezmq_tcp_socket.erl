@@ -17,7 +17,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/5, start_link/5]).
+-export([start/5, start_link/5, sockname/1]).
 
 %% gen_listener_tcp callbacks
 -export([init/1, handle_accept/2, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -40,6 +40,14 @@ start(Version, Type, Identity, Port, Opts) ->
 
 start_link(Version, Type, Identity, Port, Opts) ->
     gen_listener_tcp:start_link(?MODULE, [self(), Version, Type, Identity, Port, Opts], [?SERVER_OPTS]).
+
+sockname(Listener) ->
+    case gen_listener_tcp:sockname(Listener) of
+	{ok, {Address, Port}} ->
+	    {ok, {tcp, Address, Port}};
+	Other ->
+	    Other
+    end.
 
 init([MqSocket, Version, Type, Identity, Port, Opts]) ->
     {ok, {Port, Opts}, {MqSocket, Version, Type, Identity}}.
