@@ -27,7 +27,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 -define(port(P), (((P) band bnot 16#ffff) =:= 0)).
 -record(cargs, {family, address, port, tcpopts, timeout, failcnt}).
 
@@ -38,7 +38,7 @@
 -endif.
 
 %%%===================================================================
-%%% API
+%%% public API
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -97,6 +97,10 @@ recv(Socket, Timeout) ->
 setopts(Socket, Opts) ->
     gen_server:call(Socket, {setopts, Opts}).
 
+%%%===================================================================
+%%% internal API
+%%%===================================================================
+
 deliver_recv(Socket, IdMsg) ->
     gen_server:cast(Socket, {deliver_recv, self(), IdMsg}).
 
@@ -111,7 +115,7 @@ deliver_close(Socket) ->
 
 %%
 %% load balance sending sockets
-%% - simple round robin 
+%% - simple round robin
 %%
 %% CHECK: is 0MQ actually doing anything else?
 %%
@@ -197,7 +201,7 @@ socket_types(Type) ->
               {dealer, ezmq_socket_dealer}, {router, ezmq_socket_router},
               {pub, ezmq_socket_pub}, {sub, ezmq_socket_sub}],
     proplists:get_value(Type, SupMod).
-            
+
 init({Owner, Opts}) ->
     case socket_types(proplists:get_value(type, Opts, req)) of
         undefined ->
@@ -338,7 +342,7 @@ handle_cast({deliver_close, Transport}, State = #ezmq_socket{connecting = Connec
     State0 = transports_deactivate(Transport, State),
     State1 = queue_close(Transport, State0),
     State2 = ezmq_socket_fsm:close(Transport, State1),
-    State3 = case orddict:find(Transport, Connecting) of 
+    State3 = case orddict:find(Transport, Connecting) of
                  {ok, ConnectArgs} ->
                      erlang:send_after(3000, self(), {reconnect, ConnectArgs#cargs{failcnt = 0}}),
                      State2#ezmq_socket{connecting =orddict:erase(Transport, Connecting)};
@@ -465,7 +469,7 @@ send_queue_run(State = #ezmq_socket{send_q = [Msg|Rest]}) ->
         _ ->
             State
     end.
-    
+
 %% check if should deliver the 'top of queue' message
 queue_run(State) ->
     case ezmq_socket_fsm:check(deliver, State) of
@@ -595,7 +599,7 @@ queue(Transport, Value, MqSState = #ezmq_socket{recv_q = Q}) ->
 queue_close(Transport, MqSState = #ezmq_socket{recv_q = Q}) ->
     Q1 = orddict:erase(Transport, Q),
     MqSState#ezmq_socket{recv_q = Q1}.
-    
+
 dequeue(MqSState = #ezmq_socket{recv_q = Q}) ->
     lager:debug("TRANS: ~p, PENDING: ~p", [MqSState#ezmq_socket.transports, Q]),
     case transports_while(fun do_dequeue/2, Q, empty, MqSState) of
