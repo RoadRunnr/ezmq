@@ -10,6 +10,7 @@ otp_release:
    - R16B03-1
    - 17.0
    - 17.1
+   - 17.3
 
 matrix:
   include:
@@ -26,4 +27,3 @@ install:
 
 notifications:
   email: none #aschultz@tpip.net
-
