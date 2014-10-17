@@ -246,11 +246,9 @@ init_socket(Owner, Type, Opts) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
-    TcpOpts0 = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
-    TcpOpts1 = case proplists:get_value(ip, Opts) of
-                   undefined -> TcpOpts0;
-                   I -> [{ip, I}|TcpOpts0]
-               end,
+    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts1 = pass_inet_opts(Opts, TcpOpts0),
+
     lager:debug("bind: ~p", [TcpOpts1]),
     case ezmq_tcp_socket:start_link(Version, Type, Identity, Port, TcpOpts1) of
         {ok, Pid} ->
@@ -261,9 +259,10 @@ handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Ve
     end;
 
 handle_call({connect, tcp, Address, Port, Opts}, _From, State) ->
-    TcpOpts = [binary, inet, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts1 = pass_inet_opts(Opts, TcpOpts0),
     Timeout = proplists:get_value(timeout, Opts, 5000),
-    ConnectArgs = #cargs{family = tcp, address = Address, port = Port, tcpopts = TcpOpts,
+    ConnectArgs = #cargs{family = tcp, address = Address, port = Port, tcpopts = TcpOpts1,
                          timeout = Timeout, failcnt = 0},
     NewState = do_connect(ConnectArgs, State),
     {reply, ok, NewState};
@@ -690,6 +689,20 @@ do_sockname(Transport, Acc) ->
 	_ ->
 	    Acc
     end.
+
+pass_inet_opts(Opts, TcpOpts) ->
+    lists:foldl(fun do_pass_inet_opts/2, TcpOpts, Opts).
+
+do_pass_inet_opts(O = {ip, _}, Opts) ->
+    [O|Opts];
+do_pass_inet_opts(O = {ifaddr, _}, Opts) ->
+    [O|Opts];
+do_pass_inet_opts(inet, Opts) ->
+    [inet|Opts];
+do_pass_inet_opts(inet6, Opts) ->
+    [inet6|Opts];
+do_pass_inet_opts(_, Opts) ->
+    Opts.
 
 validate_address(Address) when is_list(Address)  -> inet:gethostbyname(Address);
 validate_address(Address) when is_tuple(Address) -> inet:gethostbyaddr(Address);
