@@ -61,21 +61,20 @@ socket(Opts) when is_list(Opts) ->
 
 bind(Socket, tcp, Port, Opts) when ?port(Port) ->
     Valid = case proplists:get_value(ip, Opts) of
-                undefined -> {ok, undef};
+                undefined -> ok;
                 Address   -> validate_address(Address)
             end,
 
     %%TODO: socket options
     case Valid of
-        {ok, _} -> gen_server:call(Socket, {bind, tcp, Port, Opts});
-        Res     -> Res
+        ok  -> gen_server:call(Socket, {bind, tcp, Port, Opts});
+        Res -> Res
     end.
 
 connect(Socket, tcp, Address, Port, Opts) when ?port(Port) ->
-    Valid = validate_address(Address),
-    case Valid of
-        {ok, _} -> gen_server:call(Socket, {connect, tcp, Address, Port, Opts});
-        Res     -> Res
+    case validate_address(Address) of
+        ok  -> gen_server:call(Socket, {connect, tcp, Address, Port, Opts});
+        Res -> Res
     end.
 
 close(Socket) ->
@@ -704,6 +703,16 @@ do_pass_inet_opts(inet6, Opts) ->
 do_pass_inet_opts(_, Opts) ->
     Opts.
 
-validate_address(Address) when is_list(Address)  -> inet:gethostbyname(Address);
-validate_address(Address) when is_tuple(Address) -> inet:gethostbyaddr(Address);
-validate_address(_Address) -> exit(badarg).
+validate_address(Address) when is_list(Address) ->
+    case inet:gethostbyname(Address) of
+	{ok, _} -> ok;
+	Other   -> Other
+    end;
+validate_address(Address) when is_tuple(Address) ->
+    case inet:gethostbyaddr(Address) of
+	{ok, _} -> ok;
+	{error, nxdomain} -> ok;
+	Other -> Other
+    end;
+validate_address(Address) ->
+    error(badarg, [Address]).
