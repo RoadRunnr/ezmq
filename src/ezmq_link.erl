@@ -365,8 +365,7 @@ handle_info({tcp_closed, Socket}, _StateName, #state{socket = Socket} = State) -
     {stop, normal, State}.
 
 handle_data(_StateName, #state{socket = Socket, pending = <<>>}, ProcessStateNext) ->
-    ok = inet:setopts(Socket, [{active, once}]),
-    ProcessStateNext;
+    next_state_socket_active(Socket, ProcessStateNext);
 
 handle_data(StateName, #state{socket = Socket, pending = Pending} = State, ProcessStateNext)
   when StateName =:= connecting;
@@ -377,8 +376,7 @@ handle_data(StateName, #state{socket = Socket, pending = Pending} = State, Proce
 
     case Msg of
         more ->
-            ok = inet:setopts(Socket, [{active, once}]),
-            setelement(3, ProcessStateNext, State1);
+            next_state_socket_active(Socket, setelement(3, ProcessStateNext, State1));
 
         invalid ->
             %% assume that this is a greeting for a version that we don't understand,
@@ -397,8 +395,7 @@ handle_data(handshake, State = #state{version = Version, hs_state = HsState, soc
     lager:debug("handshake ~w.~w ~w, got data: ~p", [element(1, Version), element(2, Version), HsState, Pending]),
     case handshake(Version, HsState, Pending, State) of
         more ->
-            ok = inet:setopts(Socket, [{active, once}]),
-            setelement(3, ProcessStateNext, State);
+            next_state_socket_active(Socket, setelement(3, ProcessStateNext, State));
 
         Reply ->
             handle_data_reply(Reply)
@@ -412,8 +409,7 @@ handle_data(StateName, #state{socket = Socket, version = Ver, pending = Pending}
 
     case Msg of
         more ->
-            ok = inet:setopts(Socket, [{active, once}]),
-            setelement(3, ProcessStateNext, State1);
+            next_state_socket_active(Socket, setelement(3, ProcessStateNext, State1));
 
         invalid ->
             {stop, normal, State1};
@@ -471,6 +467,12 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 exec_sync(Msg, StateName, State) ->
     ?MODULE:StateName({in, Msg}, State).
+
+next_state_socket_active(Socket, NextStateInfo) ->
+    case inet:setopts(Socket, [{active, once}]) of
+	ok -> NextStateInfo;
+	_  -> {stop, normal, element(3, NextStateInfo)}
+    end.
 
 handle_data_reply(Reply)
   when element(1, Reply) =:= next_state ->
@@ -570,8 +572,7 @@ send_packet(Packet, NextStateInfo) ->
 
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            ok = inet:setopts(Socket, [{active, once}]),
-            NextStateInfo;
+            next_state_socket_active(Socket, NextStateInfo);
         {error, Reason} ->
             lager:debug("error - Reason: ~p", [Reason]),
             {stop, normal, State}
