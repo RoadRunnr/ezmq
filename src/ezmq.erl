@@ -49,9 +49,11 @@
 %% @end
 %%--------------------------------------------------------------------
 
-start_link(Opts) when is_list(Opts) ->
+start_link(RawOpts) when is_list(RawOpts) ->
+    Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
     gen_server:start_link(?MODULE, {self(), Opts}, [?SERVER_OPTS]).
-start(Opts) when is_list(Opts) ->
+start(RawOpts) when is_list(RawOpts) ->
+    Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
     gen_server:start(?MODULE, {self(), Opts}, [?SERVER_OPTS]).
 
 socket_link(Opts) when is_list(Opts) ->
@@ -93,7 +95,8 @@ recv(Socket) ->
 recv(Socket, Timeout) ->
     gen_server:call(Socket, {recv, Timeout}, infinity).
 
-setopts(Socket, Opts) ->
+setopts(Socket, RawOpts) ->
+    Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
     gen_server:call(Socket, {setopts, Opts}).
 
 sockname(Socket) ->
@@ -227,7 +230,7 @@ init_socket(Owner, Type, Opts) ->
     process_flag(trap_exit, true),
     MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
                                 connecting = orddict:new(), listen_trans = orddict:new(), transports = [], remote_ids = orddict:new()},
-    MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
+    MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, Opts),
     ezmq_socket_fsm:init(Type, Opts, MqSState1).
 
 %%--------------------------------------------------------------------
@@ -307,7 +310,7 @@ handle_call({send, Msg}, From, State) ->
     end;
 
 handle_call({setopts, Opts}, _From, State) ->
-    NewState = lists:foldl(fun do_setopts/2, State, proplists:unfold(Opts)),
+    NewState = lists:foldl(fun do_setopts/2, State, Opts),
     {reply, ok, NewState};
 
 handle_call(sockname, _From, #ezmq_socket{listen_trans = ListenTrans, transports = Transports} = State) ->
@@ -653,25 +656,50 @@ do_dequeue(Transport, Q) ->
 do_setopts({type, Type}, MqSState) ->
     MqSState#ezmq_socket{type = Type};
 do_setopts({identity, Id}, MqSState) ->
-    MqSState#ezmq_socket{identity = iolist_to_binary(Id)};
+    MqSState#ezmq_socket{identity = Id};
 do_setopts({active, once}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active_once});
 do_setopts({active, true}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active});
 do_setopts({active, false}, MqSState) ->
     MqSState#ezmq_socket{mode = passive};
-do_setopts({need_events, NeedEvents}, MqSState) when is_boolean(NeedEvents) ->
+do_setopts({need_events, NeedEvents}, MqSState) ->
     MqSState#ezmq_socket{need_events = NeedEvents};
 do_setopts({version, Version}, MqSState) ->
-    case lists:member(Version, ?SUPPORTED_VERSIONS) of
-        true ->
-            MqSState#ezmq_socket{version = Version};
-        _ ->
-            erlang:error(badargs, [{version, Version}])
-    end;
+    MqSState#ezmq_socket{version = Version};
 
 do_setopts(_, MqSState) ->
     MqSState.
+
+validate_opts(Opt = {type, Type})
+  when Type == req;    Type == rep;
+       Type == dealer; Type == router;
+       Type == pub;    Type == sub ->
+    Opt;
+
+validate_opts(Opt = {identity, Id}) when is_binary(Id) ->
+    Opt;
+validate_opts({identity, Id}) when is_list(Id) ->
+    {identity, iolist_to_binary(Id)};
+
+validate_opts(Opt = {active, once}) -> Opt;
+validate_opts(Opt = {active, true}) -> Opt;
+validate_opts(Opt = {active, false}) -> Opt;
+
+validate_opts(Opt = {need_events, NeedEvents}) when is_boolean(NeedEvents) ->
+    Opt;
+
+validate_opts(Opt = {version, Version}) ->
+    case lists:member(Version, ?SUPPORTED_VERSIONS) of
+        true ->
+	    Opt;
+        _ ->
+            erlang:error(badargs, [Opt])
+    end;
+
+validate_opts(Opt) ->
+    erlang:error(badarg, [Opt]).
+
 
 do_sockname(Transport, _Opts, Acc) ->
     case ezmq_tcp_socket:sockname(Transport) of

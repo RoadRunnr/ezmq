@@ -28,13 +28,13 @@ req_tcp_connect_close(Config) ->
     TcpOpts = tcp_opts(Config),
     IP = proplists:get_value(localhost, Config, {127,0,0,1}),
     {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
-    ok = ezmq:connect(S, tcp, IP, 5555, [TcpOpts]),
+    ok = ezmq:connect(S, tcp, IP, 5555, TcpOpts),
     ezmq:close(S).
 
 req_tcp_connect_fail(Config) ->
     TcpOpts = tcp_opts(Config),
-    {ok, S} = ezmq_client_socket([{type, req}, {active, false}|TcpOpts]),
-    {error,nxdomain} = ezmq:connect(S, tcp, "undefined.undefined", 5555, []),
+    {ok, S} = ezmq_client_socket([{type, req}, {active, false}]),
+    {error,nxdomain} = ezmq:connect(S, tcp, "undefined.undefined", 5555, TcpOpts),
     ezmq:close(S).
 
 req_tcp_connect_timeout(Config) ->
@@ -69,7 +69,7 @@ dealer_tcp_connect_close(Config) ->
     TcpOpts = tcp_opts(Config),
     IP = proplists:get_value(localhost, Config, {127,0,0,1}),
     {ok, S} = ezmq_client_socket([{type, dealer}, {active, false}]),
-    ok = ezmq:connect(S, tcp, IP, 5555, [TcpOpts]),
+    ok = ezmq:connect(S, tcp, IP, 5555, TcpOpts),
     ezmq:close(S).
 
 dealer_tcp_connect_timeout(Config) ->
@@ -363,7 +363,7 @@ create_bound_pair(Config, Type1, Type2, Mode) ->
     ok = ezmq:bind(S1, tcp, 0, [{reuseaddr, true}|TcpOpts]),
     {ok, [{_, IP, Port}|_]} = ezmq:sockname(S1),
     ct:pal("IP: ~p, Port: ~p~n", [IP, Port]),
-    ok = ezmq:connect(S2, tcp, IP, Port, [TcpOpts]),
+    ok = ezmq:connect(S2, tcp, IP, Port, TcpOpts),
     {S1, S2}.
 
 %% assert that message queue is empty....
