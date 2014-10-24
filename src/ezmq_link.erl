@@ -574,7 +574,7 @@ send_packet(Packet, NextStateInfo) ->
             NextStateInfo;
         {error, Reason} ->
             lager:debug("error - Reason: ~p", [Reason]),
-            {stop, Reason, State}
+            {stop, normal, State}
     end.
 
 is_compatible_socket(pair, pair) -> ok;
