@@ -16,7 +16,7 @@
 -export([bind/4, connect/5, close/1]).
 -export([recv/1, recv/2]).
 -export([send/2]).
--export([setopts/2, sockname/1]).
+-export([controlling_process/2, setopts/2, sockname/1]).
 
 %% Internal exports
 -export([deliver_recv/2, deliver_accept/2, deliver_connect/2, deliver_close/1]).
@@ -49,17 +49,17 @@
 %% @end
 %%--------------------------------------------------------------------
 
+start(RawOpts) when is_list(RawOpts) ->
+    start_link(RawOpts).
 start_link(RawOpts) when is_list(RawOpts) ->
     Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
     gen_server:start_link(?MODULE, {self(), Opts}, [?SERVER_OPTS]).
-start(RawOpts) when is_list(RawOpts) ->
-    Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
-    gen_server:start(?MODULE, {self(), Opts}, [?SERVER_OPTS]).
+
+socket(Opts) when is_list(Opts) ->
+    start_link(Opts).
 
 socket_link(Opts) when is_list(Opts) ->
     start_link(Opts).
-socket(Opts) when is_list(Opts) ->
-    start(Opts).
 
 bind(Socket, tcp, Port, Opts) when ?port(Port) ->
     Valid = case proplists:get_value(ip, Opts) of
@@ -94,6 +94,9 @@ recv(Socket) ->
 
 recv(Socket, Timeout) ->
     gen_server:call(Socket, {recv, Timeout}, infinity).
+
+controlling_process(Socket, Pid) when is_pid(Socket), is_pid(Pid) ->
+    gen_server:call(Socket, {controlling_process, Pid}).
 
 setopts(Socket, RawOpts) ->
     Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
@@ -229,7 +232,8 @@ init({Owner, Opts}) ->
 init_socket(Owner, Type, Opts) ->
     process_flag(trap_exit, true),
     MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
-                                connecting = orddict:new(), listen_trans = orddict:new(), transports = [], remote_ids = orddict:new()},
+			     connecting = orddict:new(), listen_trans = orddict:new(),
+			     transports = [], remote_ids = orddict:new()},
     MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, Opts),
     ezmq_socket_fsm:init(Type, Opts, MqSState1).
 
@@ -248,7 +252,8 @@ init_socket(Owner, Type, Opts) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
-    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {backlog,10},
+		{nodelay,true}, {packet,raw}, {reuseaddr,true}],
     TcpOpts1 = pass_inet_opts(Opts, TcpOpts0),
 
     lager:debug("bind: ~p", [TcpOpts1]),
@@ -308,6 +313,13 @@ handle_call({send, Msg}, From, State) ->
             State2 = queue_run(State1),
             {reply, ok, State2}
     end;
+
+handle_call({controlling_process, Pid}, {From, _Tag}, #ezmq_socket{owner = From} = State) ->
+    unlink(From),
+    link(Pid),
+    {reply, ok, State#ezmq_socket{owner = Pid}};
+handle_call({controlling_process, _Pid}, _From, State) ->
+    {reply, {error, not_owner}, State};
 
 handle_call({setopts, Opts}, _From, State) ->
     NewState = lists:foldl(fun do_setopts/2, State, Opts),
@@ -399,6 +411,10 @@ handle_info(recv_timeout, #ezmq_socket{pending_recv = {From, _}} = State) ->
 handle_info({reconnect, ConnectArgs}, #ezmq_socket{} = State) ->
     NewState = do_connect(ConnectArgs, State),
     {noreply, NewState};
+
+handle_info({'EXIT', Pid, Reason}, #ezmq_socket{owner = Pid} = State) ->
+    lager:debug("owner process died: ~p~n", [Reason]),
+    {stop, normal, State};
 
 handle_info({'EXIT', Pid, _Reason}, MqSState) ->
     case transports_is_active(Pid, MqSState) of
