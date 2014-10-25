@@ -16,7 +16,7 @@
 -export([bind/4, connect/5, close/1]).
 -export([recv/1, recv/2]).
 -export([send/2]).
--export([setopts/2, sockname/1]).
+-export([controlling_process/2, setopts/2, sockname/1]).
 
 %% Internal exports
 -export([deliver_recv/2, deliver_accept/2, deliver_connect/2, deliver_close/1]).
@@ -49,33 +49,34 @@
 %% @end
 %%--------------------------------------------------------------------
 
-start_link(Opts) when is_list(Opts) ->
+start(RawOpts) when is_list(RawOpts) ->
+    start_link(RawOpts).
+start_link(RawOpts) when is_list(RawOpts) ->
+    Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
     gen_server:start_link(?MODULE, {self(), Opts}, [?SERVER_OPTS]).
-start(Opts) when is_list(Opts) ->
-    gen_server:start(?MODULE, {self(), Opts}, [?SERVER_OPTS]).
+
+socket(Opts) when is_list(Opts) ->
+    start_link(Opts).
 
 socket_link(Opts) when is_list(Opts) ->
     start_link(Opts).
-socket(Opts) when is_list(Opts) ->
-    start(Opts).
 
 bind(Socket, tcp, Port, Opts) when ?port(Port) ->
     Valid = case proplists:get_value(ip, Opts) of
-                undefined -> {ok, undef};
+                undefined -> ok;
                 Address   -> validate_address(Address)
             end,
 
     %%TODO: socket options
     case Valid of
-        {ok, _} -> gen_server:call(Socket, {bind, tcp, Port, Opts});
-        Res     -> Res
+        ok  -> gen_server:call(Socket, {bind, tcp, Port, Opts});
+        Res -> Res
     end.
 
 connect(Socket, tcp, Address, Port, Opts) when ?port(Port) ->
-    Valid = validate_address(Address),
-    case Valid of
-        {ok, _} -> gen_server:call(Socket, {connect, tcp, Address, Port, Opts});
-        Res     -> Res
+    case validate_address(Address) of
+        ok  -> gen_server:call(Socket, {connect, tcp, Address, Port, Opts});
+        Res -> Res
     end.
 
 close(Socket) ->
@@ -94,7 +95,11 @@ recv(Socket) ->
 recv(Socket, Timeout) ->
     gen_server:call(Socket, {recv, Timeout}, infinity).
 
-setopts(Socket, Opts) ->
+controlling_process(Socket, Pid) when is_pid(Socket), is_pid(Pid) ->
+    gen_server:call(Socket, {controlling_process, Pid}).
+
+setopts(Socket, RawOpts) ->
+    Opts = lists:map(fun validate_opts/1, proplists:unfold(RawOpts)),
     gen_server:call(Socket, {setopts, Opts}).
 
 sockname(Socket) ->
@@ -227,8 +232,9 @@ init({Owner, Opts}) ->
 init_socket(Owner, Type, Opts) ->
     process_flag(trap_exit, true),
     MqSState0 = #ezmq_socket{owner = Owner, mode = passive, recv_q = orddict:new(),
-                                connecting = orddict:new(), listen_trans = orddict:new(), transports = [], remote_ids = orddict:new()},
-    MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, proplists:unfold(Opts)),
+			     connecting = orddict:new(), listen_trans = orddict:new(),
+			     transports = [], remote_ids = orddict:new()},
+    MqSState1 = lists:foldl(fun do_setopts/2, MqSState0, Opts),
     ezmq_socket_fsm:init(Type, Opts, MqSState1).
 
 %%--------------------------------------------------------------------
@@ -246,11 +252,10 @@ init_socket(Owner, Type, Opts) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Version, type = Type, identity = Identity}) ->
-    TcpOpts0 = [binary,inet, {active,false}, {send_timeout,5000}, {backlog,10}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
-    TcpOpts1 = case proplists:get_value(ip, Opts) of
-                   undefined -> TcpOpts0;
-                   I -> [{ip, I}|TcpOpts0]
-               end,
+    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {backlog,10},
+		{nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts1 = pass_inet_opts(Opts, TcpOpts0),
+
     lager:debug("bind: ~p", [TcpOpts1]),
     case ezmq_tcp_socket:start_link(Version, Type, Identity, Port, TcpOpts1) of
         {ok, Pid} ->
@@ -261,9 +266,10 @@ handle_call({bind, tcp, Port, Opts}, _From, MqSState = #ezmq_socket{version = Ve
     end;
 
 handle_call({connect, tcp, Address, Port, Opts}, _From, State) ->
-    TcpOpts = [binary, inet, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts0 = [binary, {active,false}, {send_timeout,5000}, {nodelay,true}, {packet,raw}, {reuseaddr,true}],
+    TcpOpts1 = pass_inet_opts(Opts, TcpOpts0),
     Timeout = proplists:get_value(timeout, Opts, 5000),
-    ConnectArgs = #cargs{family = tcp, address = Address, port = Port, tcpopts = TcpOpts,
+    ConnectArgs = #cargs{family = tcp, address = Address, port = Port, tcpopts = TcpOpts1,
                          timeout = Timeout, failcnt = 0},
     NewState = do_connect(ConnectArgs, State),
     {reply, ok, NewState};
@@ -308,8 +314,15 @@ handle_call({send, Msg}, From, State) ->
             {reply, ok, State2}
     end;
 
+handle_call({controlling_process, Pid}, {From, _Tag}, #ezmq_socket{owner = From} = State) ->
+    unlink(From),
+    link(Pid),
+    {reply, ok, State#ezmq_socket{owner = Pid}};
+handle_call({controlling_process, _Pid}, _From, State) ->
+    {reply, {error, not_owner}, State};
+
 handle_call({setopts, Opts}, _From, State) ->
-    NewState = lists:foldl(fun do_setopts/2, State, proplists:unfold(Opts)),
+    NewState = lists:foldl(fun do_setopts/2, State, Opts),
     {reply, ok, NewState};
 
 handle_call(sockname, _From, #ezmq_socket{listen_trans = ListenTrans, transports = Transports} = State) ->
@@ -398,6 +411,10 @@ handle_info(recv_timeout, #ezmq_socket{pending_recv = {From, _}} = State) ->
 handle_info({reconnect, ConnectArgs}, #ezmq_socket{} = State) ->
     NewState = do_connect(ConnectArgs, State),
     {noreply, NewState};
+
+handle_info({'EXIT', Pid, Reason}, #ezmq_socket{owner = Pid} = State) ->
+    lager:debug("owner process died: ~p~n", [Reason]),
+    {stop, normal, State};
 
 handle_info({'EXIT', Pid, _Reason}, MqSState) ->
     case transports_is_active(Pid, MqSState) of
@@ -655,25 +672,50 @@ do_dequeue(Transport, Q) ->
 do_setopts({type, Type}, MqSState) ->
     MqSState#ezmq_socket{type = Type};
 do_setopts({identity, Id}, MqSState) ->
-    MqSState#ezmq_socket{identity = iolist_to_binary(Id)};
+    MqSState#ezmq_socket{identity = Id};
 do_setopts({active, once}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active_once});
 do_setopts({active, true}, MqSState) ->
     run_recv_q(MqSState#ezmq_socket{mode = active});
 do_setopts({active, false}, MqSState) ->
     MqSState#ezmq_socket{mode = passive};
-do_setopts({need_events, NeedEvents}, MqSState) when is_boolean(NeedEvents) ->
+do_setopts({need_events, NeedEvents}, MqSState) ->
     MqSState#ezmq_socket{need_events = NeedEvents};
 do_setopts({version, Version}, MqSState) ->
-    case lists:member(Version, ?SUPPORTED_VERSIONS) of
-        true ->
-            MqSState#ezmq_socket{version = Version};
-        _ ->
-            erlang:error(badargs, [{version, Version}])
-    end;
+    MqSState#ezmq_socket{version = Version};
 
 do_setopts(_, MqSState) ->
     MqSState.
+
+validate_opts(Opt = {type, Type})
+  when Type == req;    Type == rep;
+       Type == dealer; Type == router;
+       Type == pub;    Type == sub ->
+    Opt;
+
+validate_opts(Opt = {identity, Id}) when is_binary(Id) ->
+    Opt;
+validate_opts({identity, Id}) when is_list(Id) ->
+    {identity, iolist_to_binary(Id)};
+
+validate_opts(Opt = {active, once}) -> Opt;
+validate_opts(Opt = {active, true}) -> Opt;
+validate_opts(Opt = {active, false}) -> Opt;
+
+validate_opts(Opt = {need_events, NeedEvents}) when is_boolean(NeedEvents) ->
+    Opt;
+
+validate_opts(Opt = {version, Version}) ->
+    case lists:member(Version, ?SUPPORTED_VERSIONS) of
+        true ->
+	    Opt;
+        _ ->
+            erlang:error(badargs, [Opt])
+    end;
+
+validate_opts(Opt) ->
+    erlang:error(badarg, [Opt]).
+
 
 do_sockname(Transport, _Opts, Acc) ->
     case ezmq_tcp_socket:sockname(Transport) of
@@ -691,6 +733,30 @@ do_sockname(Transport, Acc) ->
 	    Acc
     end.
 
-validate_address(Address) when is_list(Address)  -> inet:gethostbyname(Address);
-validate_address(Address) when is_tuple(Address) -> inet:gethostbyaddr(Address);
-validate_address(_Address) -> exit(badarg).
+pass_inet_opts(Opts, TcpOpts) ->
+    lists:foldl(fun do_pass_inet_opts/2, TcpOpts, Opts).
+
+do_pass_inet_opts(O = {ip, _}, Opts) ->
+    [O|Opts];
+do_pass_inet_opts(O = {ifaddr, _}, Opts) ->
+    [O|Opts];
+do_pass_inet_opts(inet, Opts) ->
+    [inet|Opts];
+do_pass_inet_opts(inet6, Opts) ->
+    [inet6|Opts];
+do_pass_inet_opts(_, Opts) ->
+    Opts.
+
+validate_address(Address) when is_list(Address) ->
+    case inet:gethostbyname(Address) of
+	{ok, _} -> ok;
+	Other   -> Other
+    end;
+validate_address(Address) when is_tuple(Address) ->
+    case inet:gethostbyaddr(Address) of
+	{ok, _} -> ok;
+	{error, nxdomain} -> ok;
+	Other -> Other
+    end;
+validate_address(Address) ->
+    error(badarg, [Address]).

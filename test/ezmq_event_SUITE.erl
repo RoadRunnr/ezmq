@@ -34,8 +34,8 @@ ezmq_server_events_t(Contig) ->
     Port = 5555,
     ClientIdentity = <<"client">>,
     ServerIdentity = <<"server">>,
-    {ok, ServerSocket} = ezmq:socket([{type, router}, {active, true}, {reuseaddr, true}, {identity, ServerIdentity}, {need_events, true}]),
-    ?assertEqual(ok, ezmq:bind(ServerSocket, tcp, Port, [{ip, IP}])),
+    {ok, ServerSocket} = ezmq:socket([{type, router}, {active, true}, {identity, ServerIdentity}, {need_events, true}]),
+    ?assertEqual(ok, ezmq:bind(ServerSocket, tcp, Port, [{ip, IP}, {reuseaddr, true}])),
     receive
         {zmq_event, ServerSocket, Event} ->
             ?debugFmt("ERROR: No connections. Unhandled events: ~p~n", [Event]),
@@ -92,8 +92,8 @@ ezmq_client_events_t(Contig) ->
     Port = 5555,
     ClientIdentity = <<"client">>,
     ServerIdentity = <<"server">>,
-    {ok, ServerSocket} = ezmq:socket([{type, router}, {active, true}, {reuseaddr, true}, {identity, ServerIdentity}]),
-    ?assertEqual(ok, ezmq:bind(ServerSocket, tcp, Port, [{ip, IP}])),
+    {ok, ServerSocket} = ezmq:socket([{type, router}, {active, true}, {identity, ServerIdentity}]),
+    ?assertEqual(ok, ezmq:bind(ServerSocket, tcp, Port, [{ip, IP}, {reuseaddr, true}])),
     receive
         {zmq_event, ServerSocket, Event} ->
             ?debugFmt("ERROR: No connections. Unhandled events: ~p~n", [Event]),
@@ -150,8 +150,8 @@ no_events_t(Contig) ->
     Port = 5555,
     ClientIdentity = <<"client">>,
     ServerIdentity = <<"server">>,
-    {ok, ServerSocket} = ezmq:socket([{type, router}, {active, true}, {identity, ServerIdentity}, {reuseaddr, true}]),
-    ?assertEqual(ok, ezmq:bind(ServerSocket, tcp, Port, [{ip, IP}])),
+    {ok, ServerSocket} = ezmq:socket([{type, router}, {active, true}, {identity, ServerIdentity}]),
+    ?assertEqual(ok, ezmq:bind(ServerSocket, tcp, Port, [{ip, IP}, {reuseaddr, true}])),
     %% Start client
     {ok, ClientSocket} = ezmq:start([{type, dealer}, {identity, ClientIdentity}]),
     ezmq:connect(ClientSocket, tcp, IP, Port, []),
